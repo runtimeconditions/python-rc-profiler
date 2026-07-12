@@ -1,0 +1,16 @@
+apiVersion: runtimeconditions.io/v1alpha1
+kind: RuntimeConditionsProfile
+metadata:
+  name: python-wildcard-cache
+workload:
+  uri: example/python-wildcard-cache
+  version: test
+extensions:
+- https://runtimeconditions.io/extensions/common-integrations/v1alpha1/runtimeconditions.extension.yaml
+conditions:
+- name: request-cache
+  kind: cache
+  interface:
+    type: key_value
+    engine: redis
+

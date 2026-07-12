@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "runtimeconditions-profiler"
+version = "0.1.0"
+description = "Runtime Conditions Python profiler"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "PyYAML>=6.0",
+  "tomli>=2.0; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest>=8.0",
+]
+
+[project.scripts]
+runtimeconditions-python-profiler = "runtimeconditions_profiler.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["runtimeconditions_profiler*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

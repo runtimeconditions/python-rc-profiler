@@ -1,0 +1,3 @@
+valid: false
+wantErrorContains: Fixture.option stringArg index 2 is out of range
+

@@ -1,0 +1,3 @@
+valid: false
+wantErrorContains: nameArg index 0 must point to a string parameter
+

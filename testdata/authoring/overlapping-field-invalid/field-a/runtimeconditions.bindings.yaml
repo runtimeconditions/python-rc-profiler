@@ -1,0 +1,19 @@
+apiVersion: runtimeconditions.io/v1alpha1
+kind: RuntimeConditionsBinding
+metadata:
+  extension: https://example.com/runtimeconditions/python-fixtures/overlap-field-a/v1alpha1/runtimeconditions.extension.yaml
+  language: python
+python:
+  package: field_a_fixture
+  options:
+    - class: FieldA
+      function: env
+      target: configuration.env[]
+      appliesToKinds:
+        - app.fixture
+      appliesToInterfaceTypes:
+        - app
+      stringArgs:
+        property: 0
+        name: 1
+

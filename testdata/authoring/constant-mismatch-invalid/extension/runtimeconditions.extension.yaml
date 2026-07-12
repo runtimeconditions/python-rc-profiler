@@ -1,0 +1,21 @@
+apiVersion: runtimeconditions.io/v1alpha1
+kind: RuntimeConditionsExtensionDefinition
+metadata:
+  id: https://example.com/runtimeconditions/python-fixtures/constant/v1alpha1/runtimeconditions.extension.yaml
+spec:
+  kinds:
+    - name: python.fixture
+  interfaceTypes:
+    - name: python
+      targetKind: python.fixture
+  interfaceFields:
+    - name: mode
+      targetKind: python.fixture
+      targetType: python
+  fieldValues:
+    - field: interface.mode
+      targetKind: python.fixture
+      targetType: python
+      values:
+        - expected
+

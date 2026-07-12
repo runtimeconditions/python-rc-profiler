@@ -1,0 +1,14 @@
+apiVersion: runtimeconditions.io/v1alpha1
+kind: RuntimeConditionsBinding
+metadata:
+  extension: https://example.com/runtimeconditions/python-fixtures/overlap-base/v1alpha1/runtimeconditions.extension.yaml
+  language: python
+python:
+  package: base_fixture
+  declarations:
+    - class: Base
+      function: declare
+      nameArg: 0
+      kind: app.fixture
+      interfaceType: app
+

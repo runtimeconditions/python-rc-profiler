@@ -1,0 +1,19 @@
+apiVersion: runtimeconditions.io/v1alpha1
+kind: RuntimeConditionsBinding
+metadata:
+  extension: https://example.com/runtimeconditions/python-fixtures/transitive-config/v1alpha1/runtimeconditions.extension.yaml
+  language: python
+python:
+  package: config_fixture
+  options:
+    - class: Config
+      function: env
+      target: configuration.env[]
+      appliesToKinds:
+        - app.fixture
+      appliesToInterfaceTypes:
+        - app
+      stringArgs:
+        property: 0
+        name: 1
+

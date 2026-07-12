@@ -1,0 +1,10 @@
+apiVersion: runtimeconditions.io/v1alpha1
+kind: RuntimeConditionsExtensionDefinition
+metadata:
+  id: https://example.com/runtimeconditions/python-fixtures/transitive-base/v1alpha1/runtimeconditions.extension.yaml
+spec:
+  kinds:
+    - name: app.fixture
+  interfaceTypes:
+    - name: app
+      targetKind: app.fixture

@@ -1,0 +1,18 @@
+apiVersion: runtimeconditions.io/v1alpha1
+kind: RuntimeConditionsBinding
+metadata:
+  extension: https://example.com/runtimeconditions/python-fixtures/bad-class/v1alpha1/runtimeconditions.extension.yaml
+  language: python
+python:
+  package: runtimeconditions_fixture
+  declarations:
+    - class: Fixture
+      function: declare
+      nameArg: 0
+      kind: python.fixture
+      options:
+        - class: Fixture
+          function: schema
+          target: responseSchema
+          classArg: 0
+

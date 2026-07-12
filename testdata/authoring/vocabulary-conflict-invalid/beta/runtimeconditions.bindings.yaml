@@ -1,0 +1,13 @@
+apiVersion: runtimeconditions.io/v1alpha1
+kind: RuntimeConditionsBinding
+metadata:
+  extension: https://example.com/runtimeconditions/python-fixtures/conflict-beta/v1alpha1/runtimeconditions.extension.yaml
+  language: python
+python:
+  package: beta_fixture
+  declarations:
+    - class: Beta
+      function: declare
+      nameArg: 0
+      kind: shared.fixture
+

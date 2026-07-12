@@ -1,0 +1,3 @@
+valid: false
+wantErrorContains: declaration kind python.unknown
+

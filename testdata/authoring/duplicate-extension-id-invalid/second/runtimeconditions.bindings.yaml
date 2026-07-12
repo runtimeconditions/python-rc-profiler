@@ -1,0 +1,13 @@
+apiVersion: runtimeconditions.io/v1alpha1
+kind: RuntimeConditionsBinding
+metadata:
+  extension: https://example.com/runtimeconditions/python-fixtures/duplicate/v1alpha1/runtimeconditions.extension.yaml
+  language: python
+python:
+  package: second_fixture
+  declarations:
+    - class: Fixture
+      function: declare
+      nameArg: 0
+      kind: second.fixture
+

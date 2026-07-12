@@ -1,0 +1,11 @@
+apiVersion: runtimeconditions.io/v1alpha1
+kind: RuntimeConditionsExtensionDefinition
+metadata:
+  id: https://example.com/runtimeconditions/python-fixtures/conflict-app/v1alpha1/runtimeconditions.extension.yaml
+spec:
+  dependencies:
+    - https://example.com/runtimeconditions/python-fixtures/conflict-alpha/v1alpha1/runtimeconditions.extension.yaml
+    - https://example.com/runtimeconditions/python-fixtures/conflict-beta/v1alpha1/runtimeconditions.extension.yaml
+  kinds:
+    - name: app.fixture
+

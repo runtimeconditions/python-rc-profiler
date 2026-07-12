@@ -1,0 +1,46 @@
+apiVersion: runtimeconditions.io/v1alpha1
+kind: RuntimeConditionsProfile
+metadata:
+  name: python-declarative-app
+workload:
+  uri: example/python-declarative-app
+  version: test
+extensions:
+- https://runtimeconditions.io/extensions/common-integrations/v1alpha1/runtimeconditions.extension.yaml
+- https://runtimeconditions.io/extensions/env-configuration/v1alpha1/runtimeconditions.extension.yaml
+conditions:
+- name: todos-api
+  kind: api
+  interface:
+    type: http
+    spec:
+      format: openapi
+      uri: catalog://api/default/todos-api
+      version: 1.0.0
+    operations:
+    - method: GET
+      path: /todos/{id}
+      responseSchema:
+        id: integer
+        title: string
+        completed: boolean
+  configuration:
+    env:
+    - property: baseUrl
+      name: TODOS_API_URL
+- name: request-cache
+  kind: cache
+  interface:
+    type: key_value
+    engine: redis
+  configuration:
+    alternatives:
+    - env:
+      - property: url
+        name: REDIS_URL
+    - env:
+      - property: hostname
+        name: REDIS_HOST
+      - property: port
+        name: REDIS_PORT
+

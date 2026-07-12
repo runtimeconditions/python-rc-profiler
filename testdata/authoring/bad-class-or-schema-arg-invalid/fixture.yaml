@@ -1,0 +1,3 @@
+valid: false
+wantErrorContains: classArg index 0 must point to a class/type parameter
+

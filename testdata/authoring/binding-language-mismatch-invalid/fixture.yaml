@@ -1,0 +1,3 @@
+valid: false
+wantErrorContains: metadata.language must be python
+

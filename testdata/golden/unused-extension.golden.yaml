@@ -1,0 +1,26 @@
+apiVersion: runtimeconditions.io/v1alpha1
+kind: RuntimeConditionsProfile
+metadata:
+  name: python-unused-extension
+workload:
+  uri: example/python-unused-extension
+  version: test
+extensions:
+- https://runtimeconditions.io/extensions/common-integrations/v1alpha1/runtimeconditions.extension.yaml
+conditions:
+- name: todos-api
+  kind: api
+  interface:
+    type: http
+    spec:
+      format: openapi
+      uri: catalog://api/default/todos-api
+      version: 1.0.0
+    operations:
+    - method: GET
+      path: /todos/{id}
+      responseSchema:
+        id: integer
+        title: string
+        completed: boolean
+
