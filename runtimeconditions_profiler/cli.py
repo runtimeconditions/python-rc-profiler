@@ -62,6 +62,7 @@ def add_project_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--project", default=".")
     parser.add_argument("--package-path", action="append", default=[])
     parser.add_argument("--resolve-package-paths", action="store_true")
+    parser.add_argument("--no-installed-sdk-mappings", action="store_true")
 
 
 def discovery_options(args: argparse.Namespace) -> DiscoveryOptions:
@@ -70,7 +71,7 @@ def discovery_options(args: argparse.Namespace) -> DiscoveryOptions:
         for item in value.split(os.pathsep):
             if item.strip():
                 package_paths.append(Path(item))
-    return DiscoveryOptions(package_paths=package_paths, resolve_package_paths=args.resolve_package_paths)
+    return DiscoveryOptions(package_paths=package_paths, resolve_package_paths=args.resolve_package_paths, discover_installed_sdk_mappings=not args.no_installed_sdk_mappings)
 
 
 def run_discover(args: argparse.Namespace) -> int:
@@ -103,6 +104,22 @@ def run_discover(args: argparse.Namespace) -> int:
             f"declarations={len(manifest.declarations) if manifest else 0} "
             f"options={len(manifest.options) if manifest else 0} "
             f"constants={len(manifest.constants) if manifest else 0}"
+        )
+    for artifact in result.sdk_mappings:
+        print(
+            "sdkMapping: "
+            f"distribution={artifact.distribution} "
+            f"version={artifact.distribution_version} "
+            f"name={artifact.name} "
+            f"mapping={artifact.mapping_path}"
+        )
+    for artifact in result.sdk_extensions:
+        print(
+            "sdkExtension: "
+            f"id={artifact.id} "
+            f"version={artifact.version} "
+            f"semanticSha256={artifact.semantic_sha256} "
+            f"path={artifact.path}"
         )
     for diagnostic in result.diagnostics:
         print(

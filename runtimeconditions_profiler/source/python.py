@@ -164,7 +164,7 @@ def workload_source_files(root: Path) -> list[Path]:
         if not source_root.is_dir():
             continue
         for path in sorted(source_root.rglob("*.py")):
-            if ignored_path(path):
+            if ignored_path(path) or "tests" in path.parts or path.name.startswith("test_"):
                 continue
             resolved = path.resolve()
             if resolved in seen:
@@ -245,4 +245,3 @@ def arg_indexes(mapping: SymbolMapping) -> list[tuple[str, int]]:
     for _, index in mapping.string_args.items():
         result.append(("stringArg", index))
     return result
-

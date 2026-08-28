@@ -81,6 +81,28 @@ class ValidatedArtifact:
 class DiscoveryOptions:
     package_paths: list[Path] = field(default_factory=list)
     resolve_package_paths: bool = False
+    discover_installed_sdk_mappings: bool = True
+
+
+@dataclass(frozen=True)
+class SDKMappingArtifact:
+    distribution: str
+    distribution_version: str
+    name: str
+    index_path: Path
+    mapping_path: Path
+    mapping_sha256: str
+    mapping: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class SDKExtensionArtifact:
+    id: str
+    version: str
+    semantic_sha256: str
+    path: Path
+    definition: ExtensionDefinition
+    document: dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -90,10 +112,13 @@ class DiscoveryResult:
     package_paths: list[Path]
     artifacts: list[RuntimeConditionsArtifact]
     validated_artifacts: list[ValidatedArtifact]
+    sdk_mappings: list[SDKMappingArtifact] = field(default_factory=list)
+    sdk_extensions: list[SDKExtensionArtifact] = field(default_factory=list)
+    sdk_diagnostics: list[Diagnostic] = field(default_factory=list)
 
     @property
     def diagnostics(self) -> list[Diagnostic]:
-        return [diagnostic for artifact in self.validated_artifacts for diagnostic in artifact.diagnostics]
+        return [diagnostic for artifact in self.validated_artifacts for diagnostic in artifact.diagnostics] + self.sdk_diagnostics
 
     @property
     def has_errors(self) -> bool:
@@ -130,6 +155,26 @@ class DiscoveryResult:
                 }
                 for diagnostic in self.diagnostics
             ],
+            "sdkMappings": [
+                {
+                    "distribution": artifact.distribution,
+                    "distributionVersion": artifact.distribution_version,
+                    "name": artifact.name,
+                    "index": str(artifact.index_path),
+                    "mapping": str(artifact.mapping_path),
+                    "sha256": artifact.mapping_sha256,
+                }
+                for artifact in self.sdk_mappings
+            ],
+            "sdkExtensions": [
+                {
+                    "id": artifact.id,
+                    "version": artifact.version,
+                    "semanticSha256": artifact.semantic_sha256,
+                    "path": str(artifact.path),
+                }
+                for artifact in self.sdk_extensions
+            ],
         }
 
 
@@ -145,4 +190,3 @@ class ProfileOptions:
 class CallIdentity:
     class_name: str
     member_name: str
-

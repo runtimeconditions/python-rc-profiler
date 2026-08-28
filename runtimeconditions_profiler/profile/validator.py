@@ -26,6 +26,7 @@ class ProfileValidator:
             for artifact in discovery.validated_artifacts
             if artifact.extension_id and artifact.extension_definition
         }
+        definitions.update({artifact.id: artifact.definition for artifact in discovery.sdk_extensions})
         declared: set[str] = set()
         for extension in extensions:
             if extension in declared:
@@ -92,12 +93,14 @@ def validate_condition(
         for op_index, operation in enumerate(operations):
             if not isinstance(operation, dict):
                 continue
-            method = str(operation.get("method", ""))
-            expect_profile_count(
-                vocabulary.field_value_count("interface.operations[].method", kind, interface_type, method),
-                f"{prefix}.interface.operations[{op_index}].method {method} for {kind}/{interface_type}",
-                add,
-            )
+            for field, value in operation.items():
+                field_name = f"interface.operations[].{field}"
+                if vocabulary.field_value_definition_count(field_name, kind, interface_type):
+                    expect_profile_count(
+                        vocabulary.field_value_count(field_name, kind, interface_type, str(value)),
+                        f"{prefix}.interface.operations[{op_index}].{field} {value} for {kind}/{interface_type}",
+                        add,
+                    )
     engine = str(interface.get("engine", ""))
     if engine:
         expect_profile_count(
@@ -151,4 +154,3 @@ def validate_condition(
 def expect_profile_count(count: int, message: str, add: Any) -> None:
     if count != 1:
         add(f"{message}: expected exactly one definition, got {count}")
-

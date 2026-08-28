@@ -6,4 +6,6 @@ LANGUAGE = "python"
 BINDINGS_MANIFEST = "runtimeconditions.bindings.yaml"
 PACKAGE_MANIFEST = "runtimeconditions.package.yaml"
 EXTENSION_DEFINITION = "runtimeconditions.extension.yaml"
-
+SDK_MAPPING_API_VERSION = "runtimeconditions.io/sdk-mapping/v1alpha1"
+SDK_MAPPING_KIND = "RuntimeConditionsSDKMapping"
+SDK_MAPPING_INDEX_KIND = "RuntimeConditionsSDKMappingIndex"

@@ -9,6 +9,7 @@ from ..errors import RuntimeConditionsError
 from ..manifest.mapping import find_option, simple_name, strip_package_class
 from ..models import DiscoveryResult, ProfileOptions, SymbolMapping
 from ..project import ProjectDiscovery
+from ..sdk import SDKPythonExtractor
 from ..source.python import PythonSourceIndex, expression_name, literal_string, workload_source_files
 from ..util import add_extension_closure, add_unique, deep_copy, diagnostics_text
 from .binding import BindingArtifact
@@ -26,15 +27,30 @@ class ProfileExtractor:
             for artifact in discovery.validated_artifacts
             if artifact.artifact.kind == "binding" and artifact.manifest is not None
         ]
-        if not bindings:
-            raise RuntimeConditionsError("no RuntimeConditionsBinding artifacts were discovered")
+        if not bindings and not discovery.sdk_mappings:
+            raise RuntimeConditionsError("no RuntimeConditionsBinding artifacts or Python SDK mappings were discovered")
         source_files = workload_source_files(discovery.project_root)
         if not source_files:
             raise RuntimeConditionsError(f"no Python source files found under {discovery.project_root}")
-        extractor = PythonExtractionScanner(bindings, discovery, options)
-        extractor.collect(source_files)
-        extractor.extract(source_files)
-        profile = extractor.profile()
+        if bindings:
+            extractor = PythonExtractionScanner(bindings, discovery, options)
+            extractor.collect(source_files)
+            extractor.extract(source_files)
+            profile = extractor.profile()
+        else:
+            workload: dict[str, Any] = {}
+            if options.workload_uri:
+                workload["uri"] = options.workload_uri
+            if options.workload_version:
+                workload["version"] = options.workload_version
+            profile = {"apiVersion": API_VERSION, "kind": "RuntimeConditionsProfile", "metadata": {"name": options.name}, "workload": workload, "extensions": [], "conditions": []}
+        sdk_conditions, sdk_extensions = SDKPythonExtractor(discovery.sdk_mappings, discovery.sdk_extensions).extract(source_files, discovery.project_root)
+        for extension in sdk_extensions:
+            add_unique(profile["extensions"], extension)
+        for condition in sdk_conditions:
+            if condition not in profile["conditions"]:
+                profile["conditions"].append(condition)
+        profile["extensions"].sort()
         profile_diagnostics = ProfileValidator().validate(profile, discovery)
         if profile_diagnostics:
             raise RuntimeConditionsError(
@@ -336,4 +352,3 @@ def remove_empty_configuration(condition: dict[str, Any]) -> None:
     configuration = condition.get("configuration")
     if isinstance(configuration, dict) and not configuration:
         condition.pop("configuration")
-
