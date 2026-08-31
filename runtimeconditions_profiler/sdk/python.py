@@ -314,6 +314,39 @@ class SDKConditionResolver:
             self._validate_condition(extension, item)
         return resolved
 
+    def resolve_stateful_operation(self, artifact: SDKMappingArtifact, operation_name: str, state: dict[str, Any], scope: str) -> list[ResolvedCondition]:
+        mapping = artifact.mapping
+        matches = [item for item in mapping.get("operations", []) if isinstance(item, dict) and item.get("name") == operation_name]
+        if len(matches) != 1:
+            raise RuntimeConditionsError(f"{artifact.name}: expected one stateful SDK operation {operation_name}, found {len(matches)}")
+        template = matches[0].get("conditionTemplate")
+        if not isinstance(template, dict) or not isinstance(template.get("operation"), dict):
+            raise RuntimeConditionsError(f"{artifact.name}: stateful SDK operation {operation_name} has no condition template")
+        operation = copy.deepcopy(template["operation"])
+        bindings = template.get("stateBindings")
+        if not isinstance(bindings, dict) or not bindings:
+            raise RuntimeConditionsError(f"{artifact.name}: stateful SDK operation {operation_name} has no state bindings")
+        for field, state_field in bindings.items():
+            value = state.get(state_field) if isinstance(state_field, str) else None
+            if not isinstance(value, str):
+                return []
+            operation[field] = value
+        operation["scope"] = scope
+        verb = operation.get("verb")
+        supported = state.get("operations")
+        if not isinstance(verb, str) or not isinstance(supported, list):
+            return []
+        allowed = any(isinstance(item, dict) and item.get("verb") == verb and scope in item.get("scopes", []) for item in supported)
+        if not allowed:
+            return []
+        kind = template.get("kind")
+        interface_type = template.get("interfaceType")
+        if not isinstance(kind, str) or not isinstance(interface_type, str):
+            raise RuntimeConditionsError(f"{artifact.name}: stateful SDK operation {operation_name} has invalid condition coordinates")
+        resolved = ResolvedCondition(mapping["extension"]["id"], kind, interface_type, operation)
+        self._validate_condition(self._extension_for(mapping), resolved)
+        return [resolved]
+
     def _resolve_template(self, call: BoundCall, template: dict[str, Any]) -> dict[str, Any] | None:
         operation = copy.deepcopy(template.get("operation", {}))
         if "pathTemplate" in operation:

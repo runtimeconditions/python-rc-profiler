@@ -37,6 +37,9 @@ KUBERNETES_EXTENSION = ROOT / "extensions" / "kubernetes-api" / "releases" / "0.
 KUBERNETES_MAPPING = ROOT / "sdk" / "authorship" / "kubernetes-python" / "mappings" / "runtimeconditions.sdk-mapping.yaml"
 KUBERNETES_CONFIGMAP_APP = ROOT / "sdk" / "kubernetes" / "python" / "configmap-reader"
 KUBERNETES_WATCH_APP = ROOT / "sdk" / "kubernetes" / "python" / "pod-watcher"
+KUBERNETES_DYNAMIC_CONFIGMAP_APP = ROOT / "sdk" / "kubernetes" / "python" / "dynamic-configmap-lifecycle"
+KUBERNETES_DYNAMIC_CRD_APP = ROOT / "sdk" / "kubernetes" / "python" / "dynamic-crd-reader"
+KUBERNETES_DYNAMIC_WATCH_APP = ROOT / "sdk" / "kubernetes" / "python" / "dynamic-pod-watcher"
 AWS_EXTENSION = ROOT / "extensions" / "aws-s3" / "releases" / "0.1.0" / "runtimeconditions.extension.yaml"
 AWS_MAPPINGS = {
     "boto3": ROOT / "extensions" / "aws-s3" / "mappings" / "boto3" / "runtimeconditions.sdk-mapping.yaml",
@@ -283,6 +286,62 @@ def test_sdk_condition_delegation_resolves_watch_without_a_generic_wrapper_condi
         profile = extract_profile(KUBERNETES_WATCH_APP, "kubernetes-pod-watcher", "example/kubernetes-pod-watcher", "test", package_paths)
 
     assert profile["conditions"] == [{"kind": "kubernetes", "interface": {"type": "api", "operations": [{"verb": "watch", "apiGroup": "", "apiVersion": "v1", "resource": "pods", "scope": "namespaced"}]}}]
+
+
+def test_dynamic_client_resolves_distinct_built_in_resource_operations() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        package_paths = stage_kubernetes_sdk_catalog(Path(directory))
+        profile = extract_profile(KUBERNETES_DYNAMIC_CONFIGMAP_APP, "kubernetes-dynamic-configmaps", "example/kubernetes-dynamic-configmaps", "test", package_paths)
+
+    assert profile["conditions"] == [{"kind": "kubernetes", "interface": {"type": "api", "operations": [
+        {"verb": "create", "apiGroup": "", "apiVersion": "v1", "resource": "configmaps", "scope": "namespaced"},
+        {"verb": "get", "apiGroup": "", "apiVersion": "v1", "resource": "configmaps", "scope": "namespaced"},
+        {"verb": "list", "apiGroup": "", "apiVersion": "v1", "resource": "configmaps", "scope": "namespaced"},
+        {"verb": "patch", "apiGroup": "", "apiVersion": "v1", "resource": "configmaps", "scope": "namespaced"},
+        {"verb": "delete", "apiGroup": "", "apiVersion": "v1", "resource": "configmaps", "scope": "namespaced"},
+    ]}}]
+
+
+def test_dynamic_client_watch_is_one_state_bound_operation() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        package_paths = stage_kubernetes_sdk_catalog(Path(directory))
+        profile = extract_profile(KUBERNETES_DYNAMIC_WATCH_APP, "kubernetes-dynamic-pod-watcher", "example/kubernetes-dynamic-pod-watcher", "test", package_paths)
+
+    assert profile["conditions"] == [{"kind": "kubernetes", "interface": {"type": "api", "operations": [{"verb": "watch", "apiGroup": "", "apiVersion": "v1", "resource": "pods", "scope": "namespaced"}]}}]
+
+
+def test_dynamic_client_unmodeled_crd_emits_no_invented_resource_condition() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        package_paths = stage_kubernetes_sdk_catalog(Path(directory))
+        profile = extract_profile(KUBERNETES_DYNAMIC_CRD_APP, "kubernetes-dynamic-crd", "example/kubernetes-dynamic-crd", "test", package_paths)
+
+    assert profile["extensions"] == []
+    assert profile["conditions"] == []
+
+
+def test_dynamic_client_unresolved_selector_emits_nothing() -> None:
+    profile = extract_kubernetes_source_profile("from kubernetes import client, dynamic\n\ndef resources(api_version, kind):\n    resource = dynamic.DynamicClient(client.ApiClient()).resources.get(api_version=api_version, kind=kind)\n    return resource.get(namespace='default')\n")
+
+    assert profile["extensions"] == []
+    assert profile["conditions"] == []
+
+
+def test_dynamic_client_derives_cluster_and_all_namespace_scopes_from_resource_state() -> None:
+    profile = extract_kubernetes_source_profile("from kubernetes import client, dynamic\n\ndef resources():\n    dynamic_client = dynamic.DynamicClient(client.ApiClient())\n    nodes = dynamic_client.resources.get(api_version='v1', kind='Node')\n    configmaps = dynamic_client.resources.get(api_version='v1', kind='ConfigMap')\n    nodes.get(name='worker-1')\n    return configmaps.get()\n")
+
+    assert profile["conditions"][0]["interface"]["operations"] == [
+        {"verb": "get", "apiGroup": "", "apiVersion": "v1", "resource": "nodes", "scope": "cluster"},
+        {"verb": "list", "apiGroup": "", "apiVersion": "v1", "resource": "configmaps", "scope": "all_namespaces"},
+    ]
+
+
+def test_dynamic_client_branches_on_meaningful_arguments_without_inventing_invalid_delete() -> None:
+    profile = extract_kubernetes_source_profile("from kubernetes import client, dynamic\n\ndef resources():\n    resource = dynamic.DynamicClient(client.ApiClient()).resources.get(api_version='v1', kind='ConfigMap')\n    resource.get(name=None, namespace='default')\n    resource.delete(label_selector='app=example', namespace='default')\n    resource.delete(namespace='default')\n")
+
+    assert profile["conditions"][0]["interface"]["operations"] == [
+        {"verb": "list", "apiGroup": "", "apiVersion": "v1", "resource": "configmaps", "scope": "namespaced"},
+        {"verb": "deletecollection", "apiGroup": "", "apiVersion": "v1", "resource": "configmaps", "scope": "namespaced"},
+    ]
 
 
 def test_sdk_mapping_extraction_is_additive_to_existing_declarative_bindings() -> None:

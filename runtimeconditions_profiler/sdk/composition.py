@@ -85,6 +85,34 @@ class BoundSDKResourceMember:
     member: str
 
 
+@dataclass(frozen=True)
+class SDKStatefulFlowValue:
+    mapping: MappingKey
+    flow_id: str
+    member_path: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class BoundSDKStatefulProducer:
+    flow: SDKStatefulFlowValue
+
+
+@dataclass(frozen=True)
+class SDKStatefulResourceValue:
+    mapping: MappingKey
+    flow_id: str
+    state: tuple[tuple[str, Any], ...]
+
+    def field(self, name: str) -> Any:
+        return dict(self.state).get(name, UNKNOWN)
+
+
+@dataclass(frozen=True)
+class BoundSDKStatefulResourceMethod:
+    resource: SDKStatefulResourceValue
+    method: str
+
+
 @dataclass
 class ModuleInfo:
     name: str
@@ -130,6 +158,7 @@ class SDKCompositionRegistry:
         self.aliases: dict[str, str] = {}
         self.client_factories: list[tuple[SDKMappingArtifact, dict[str, Any], str]] = []
         self.resource_factories: list[tuple[SDKMappingArtifact, dict[str, Any], str]] = []
+        self.stateful_factories: list[tuple[SDKMappingArtifact, dict[str, Any], str]] = []
         for artifact in artifacts:
             key = (artifact.distribution, artifact.name)
             previous = self.artifacts.get(key)
@@ -155,6 +184,13 @@ class SDKCompositionRegistry:
                     for symbol in factory.get("symbols", []):
                         if isinstance(symbol, str):
                             self.resource_factories.append((artifact, factory, symbol))
+            for flow in python.get("statefulResourceFlows", []):
+                if not isinstance(flow, dict) or not isinstance(flow.get("id"), str):
+                    raise RuntimeConditionsError(f"{artifact.name}: invalid stateful resource flow")
+                for symbol in flow.get("constructorSymbols", []):
+                    if not isinstance(symbol, str) or not symbol:
+                        raise RuntimeConditionsError(f"{artifact.name}: invalid stateful resource constructor symbol")
+                    self.stateful_factories.append((artifact, flow, symbol))
 
     def canonical_symbol(self, name: str) -> str:
         seen: set[str] = set()
@@ -191,7 +227,93 @@ class SDKCompositionRegistry:
             if not isinstance(resource, str) or not resource:
                 raise RuntimeConditionsError(f"{artifact.name}: resource factory has no produced resource")
             return SDKResourceValue(target, resource)
+        for artifact, flow, declared_symbol in self.stateful_factories:
+            if self.canonical_symbol(declared_symbol) != canonical:
+                continue
+            matched_symbol = True
+            self._ensure_dependencies(artifact)
+            return SDKStatefulFlowValue((artifact.distribution, artifact.name), flow["id"])
         return UNKNOWN if matched_symbol else None
+
+    def stateful_member(self, value: SDKStatefulFlowValue, member: str) -> Any:
+        artifact, flow = self._stateful_flow(value)
+        producer = flow.get("producer", {})
+        member_path = producer.get("memberPath")
+        if not isinstance(member_path, list) or any(not isinstance(item, str) or not item for item in member_path):
+            raise RuntimeConditionsError(f"{artifact.name}: {flow.get('id')} has an invalid producer member path")
+        next_path = (*value.member_path, member)
+        expected = tuple(member_path)
+        if next_path == expected:
+            return BoundSDKStatefulProducer(value)
+        if expected[: len(next_path)] == next_path:
+            return SDKStatefulFlowValue(value.mapping, value.flow_id, next_path)
+        return UNKNOWN
+
+    def produce_stateful_resource(self, value: SDKStatefulFlowValue, positional: list[Any], keywords: dict[str, Any]) -> Any:
+        artifact, flow = self._stateful_flow(value)
+        producer = flow.get("producer", {})
+        bindings = producer.get("selectorArguments", {})
+        if not isinstance(bindings, dict):
+            raise RuntimeConditionsError(f"{artifact.name}: {flow.get('id')} has invalid selector bindings")
+        selected = {field: self._literal_string(self._argument(binding, positional, keywords)) for field, binding in bindings.items()}
+        api_version = selected.get("apiVersion")
+        kind = selected.get("kind")
+        group = selected.get("group")
+        if not isinstance(api_version, str) or not isinstance(kind, str):
+            return UNKNOWN
+        if group is None and "/" in api_version:
+            group, api_version = api_version.split("/", 1)
+        catalog = producer.get("catalog")
+        if not isinstance(catalog, list):
+            raise RuntimeConditionsError(f"{artifact.name}: {flow.get('id')} has no resource catalog")
+        candidates = []
+        for case in catalog:
+            selector = case.get("selector", {}) if isinstance(case, dict) else {}
+            if selector.get("apiVersion") != api_version or selector.get("kind") != kind:
+                continue
+            if group is not None and selector.get("apiGroup") != group:
+                continue
+            candidates.append(case)
+        if len(candidates) != 1 or not isinstance(candidates[0].get("state"), dict):
+            return UNKNOWN
+        return SDKStatefulResourceValue(value.mapping, value.flow_id, tuple(sorted(candidates[0]["state"].items())))
+
+    def resolve_stateful_resource_method(self, value: SDKStatefulResourceValue, method_name: str, positional: list[Any], keywords: dict[str, Any]) -> tuple[list[ResolvedCondition], Any]:
+        artifact, flow = self._stateful_flow(value)
+        methods = [item for item in flow.get("methods", []) if isinstance(item, dict) and item.get("method") == method_name]
+        if len(methods) != 1:
+            return [], UNKNOWN
+        method = methods[0]
+        branches = method.get("operations")
+        if not isinstance(branches, list) or not branches:
+            raise RuntimeConditionsError(f"{artifact.name}: {flow.get('id')}.{method_name} has no operations")
+        selected = []
+        for branch in branches:
+            when = branch.get("when") if isinstance(branch, dict) else None
+            if isinstance(when, dict):
+                if self._stateful_branch_matches(when, positional, keywords):
+                    selected.append(branch)
+            elif branch.get("otherwise") is True:
+                selected.append(branch)
+            else:
+                selected.append(branch)
+            if selected:
+                break
+        if len(selected) != 1:
+            return [], UNKNOWN
+        reference = selected[0].get("operationRef")
+        target = self._artifact(self._mapping_key(reference, artifact))
+        operation_name = reference.get("operation") if isinstance(reference, dict) else None
+        if not isinstance(operation_name, str):
+            raise RuntimeConditionsError(f"{artifact.name}: {flow.get('id')}.{method_name} has an invalid operation reference")
+        state = dict(value.state)
+        template = next((item.get("conditionTemplate") for item in target.mapping.get("operations", []) if isinstance(item, dict) and item.get("name") == operation_name), None)
+        if not isinstance(template, dict):
+            raise RuntimeConditionsError(f"{target.name}: stateful operation {operation_name} has no template")
+        scope = self._resolve_stateful_scope(template, state, method.get("scopeArgument"), positional, keywords)
+        if scope is None:
+            return [], UNKNOWN
+        return self.resolver.resolve_stateful_operation(target, operation_name, state, scope), UNKNOWN
 
     def client_method(self, value: SDKClientValue, method: str) -> tuple[list[ResolvedCondition], Any]:
         artifact = self._artifact(value.mapping)
@@ -305,6 +427,62 @@ class SDKCompositionRegistry:
             return positional[position]
         keyword = binding.get("keyword")
         return keywords.get(keyword, UNKNOWN) if isinstance(keyword, str) else UNKNOWN
+
+    def _argument_provided(self, binding: Any, positional: list[Any], keywords: dict[str, Any]) -> bool:
+        if not isinstance(binding, dict):
+            return False
+        position = binding.get("position")
+        if isinstance(position, int) and position < len(positional):
+            value = positional[position]
+            return not (isinstance(value, LiteralValue) and not value.value)
+        keyword = binding.get("keyword")
+        if not isinstance(keyword, str) or keyword not in keywords:
+            return False
+        value = keywords[keyword]
+        return not (isinstance(value, LiteralValue) and not value.value)
+
+    def _stateful_branch_matches(self, when: dict[str, Any], positional: list[Any], keywords: dict[str, Any]) -> bool:
+        if isinstance(when.get("argument"), dict):
+            return self._argument_provided(when["argument"], positional, keywords) == bool(when.get("provided"))
+        alternatives = when.get("any")
+        if isinstance(alternatives, list) and alternatives:
+            return any(
+                isinstance(item, dict)
+                and isinstance(item.get("argument"), dict)
+                and self._argument_provided(item["argument"], positional, keywords) == bool(item.get("provided"))
+                for item in alternatives
+            )
+        return False
+
+    def _literal_string(self, value: Any) -> str | None:
+        return value.value if isinstance(value, LiteralValue) and isinstance(value.value, str) else None
+
+    def _resolve_stateful_scope(self, template: dict[str, Any], state: dict[str, Any], argument: Any, positional: list[Any], keywords: dict[str, Any]) -> str | None:
+        resolution = template.get("scopeResolution")
+        if not isinstance(resolution, dict) or not isinstance(resolution.get("stateField"), str):
+            raise RuntimeConditionsError("stateful operation has no declarative scope resolution")
+        state_value = state.get(resolution["stateField"], UNKNOWN)
+        cases = resolution.get("cases")
+        if not isinstance(cases, list) or not cases:
+            raise RuntimeConditionsError("stateful operation has no scope resolution cases")
+        matches = [case for case in cases if isinstance(case, dict) and case.get("equals", UNKNOWN) == state_value]
+        if len(matches) != 1:
+            return None
+        case = matches[0]
+        if isinstance(case.get("value"), str):
+            return case["value"]
+        provided = case.get("argumentProvided")
+        if not isinstance(provided, dict):
+            raise RuntimeConditionsError("stateful operation scope case has no result")
+        key = "provided" if self._argument_provided(argument, positional, keywords) else "omitted"
+        return provided.get(key) if isinstance(provided.get(key), str) else None
+
+    def _stateful_flow(self, value: SDKStatefulFlowValue | SDKStatefulResourceValue) -> tuple[SDKMappingArtifact, dict[str, Any]]:
+        artifact = self._artifact(value.mapping)
+        flows = [item for item in artifact.mapping.get("python", {}).get("statefulResourceFlows", []) if isinstance(item, dict) and item.get("id") == value.flow_id]
+        if len(flows) != 1:
+            raise RuntimeConditionsError(f"{artifact.name}: unresolved stateful resource flow {value.flow_id}")
+        return artifact, flows[0]
 
     def _mapping_key(self, reference: Any, owner: SDKMappingArtifact) -> MappingKey:
         if not isinstance(reference, dict):
@@ -533,6 +711,10 @@ class SDKCompositionAnalyzer:
                 return BoundSDKClientMethod(owner, expression.attr)
             if isinstance(owner, SDKResourceValue):
                 return BoundSDKResourceMember(owner, expression.attr)
+            if isinstance(owner, SDKStatefulFlowValue):
+                return self.registry.stateful_member(owner, expression.attr)
+            if isinstance(owner, SDKStatefulResourceValue):
+                return BoundSDKStatefulResourceMethod(owner, expression.attr)
             return UNKNOWN
         if isinstance(expression, ast.Call):
             callee = self._eval(expression.func, frame)
@@ -610,6 +792,12 @@ class SDKCompositionAnalyzer:
             return value
         if isinstance(callee, BoundSDKResourceMember):
             conditions, value = self.registry.resolve_resource_member(callee.resource, callee.member)
+            self._add(conditions)
+            return value
+        if isinstance(callee, BoundSDKStatefulProducer):
+            return self.registry.produce_stateful_resource(callee.flow, positional, keywords)
+        if isinstance(callee, BoundSDKStatefulResourceMethod):
+            conditions, value = self.registry.resolve_stateful_resource_method(callee.resource, callee.method, positional, keywords)
             self._add(conditions)
             return value
         return UNKNOWN
