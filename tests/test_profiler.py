@@ -29,6 +29,8 @@ from runtimeconditions_profiler.main import (  # noqa: E402
     ProjectDiscovery,
     RuntimeConditionsError,
 )
+from runtimeconditions_profiler.models import SDKMappingArtifact  # noqa: E402
+from runtimeconditions_profiler.sdk.python import SDKPythonExtractor  # noqa: E402
 
 
 COMMON = ROOT / "extensions" / "common-integrations" / "python"
@@ -48,6 +50,10 @@ AWS_MAPPINGS = {
 }
 AWS_APPS = ROOT / "sdk" / "s3" / "python"
 AWS_PROFILE_RESULTS = ROOT / "sdk" / "authorship" / "aws-python" / "results" / "profiles"
+NATS_EXTENSION = ROOT / "extensions" / "nats-service" / "releases" / "0.1.0" / "runtimeconditions.extension.yaml"
+NATS_MAPPING = ROOT / "sdk" / "authorship" / "nats-python" / "mappings" / "runtimeconditions.sdk-mapping.yaml"
+NATS_APPS = ROOT / "sdk" / "nats" / "python"
+NATS_PROFILE_RESULTS = ROOT / "sdk" / "authorship" / "nats-python" / "results" / "profiles"
 
 
 def test_authoring_fixtures() -> None:
@@ -252,6 +258,91 @@ def test_aws_dynamic_service_does_not_infer_s3_from_an_unresolved_factory_select
     assert profile["extensions"] == []
     assert profile["conditions"] == []
     assert_aws_profile_golden("dynamic-service", profile)
+
+
+@pytest.mark.parametrize("fixture", ["core-messaging", "jetstream-publisher", "jetstream-consumer", "key-value", "object-store", "complete-service"])
+def test_nats_python_typed_state_flows_match_reviewed_profiles(fixture: str) -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        package_paths = stage_nats_sdk_catalog(Path(directory))
+        profile = extract_profile(NATS_APPS / fixture, f"nats-python-{fixture}", f"https://github.com/runtimeconditions/sdk-authorship-discovery/tree/main/nats/python/{fixture}", "0.1.0", package_paths)
+
+    assert normalize(ProfileYamlWriter.write(profile)) == normalize((NATS_PROFILE_RESULTS / f"{fixture}.yaml").read_text(encoding="utf-8"))
+
+
+def test_nats_python_does_not_emit_an_operation_with_an_unresolved_required_binding() -> None:
+    source = """import nats
+
+async def run(subject: str) -> None:
+    client = await nats.connect()
+    await client.publish(subject, b\"payload\")
+"""
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        project = root / "project"
+        project.mkdir()
+        (project / "app.py").write_text(source, encoding="utf-8")
+        profile = extract_profile(project, "nats-dynamic-subject", "example/nats-dynamic-subject", "test", stage_nats_sdk_catalog(root / "catalog"))
+
+    assert profile["conditions"] == [{"kind": "nats", "interface": {"type": "service", "operations": [{"resource": "connection", "action": "connect"}]}}]
+
+
+def test_generic_typed_value_bindings_fall_through_and_omit_explicit_none() -> None:
+    source = """import nats
+from nats.js.api import ConsumerConfig, StreamConfig
+
+async def run() -> None:
+    client = await nats.connect()
+    jetstream = client.jetstream()
+    await jetstream.add_stream(StreamConfig(name="ORDERS", subjects=None))
+    await jetstream.add_consumer("ORDERS", ConsumerConfig(name=None, durable_name="ORDERS_WORKER"))
+"""
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        project = root / "project"
+        project.mkdir()
+        (project / "app.py").write_text(source, encoding="utf-8")
+        profile = extract_profile(project, "nats-explicit-none", "example/nats-explicit-none", "test", stage_nats_sdk_catalog(root / "catalog"))
+
+    assert profile["conditions"] == [{"kind": "nats", "interface": {"type": "service", "operations": [
+        {"resource": "connection", "action": "connect"},
+        {"resource": "stream", "action": "create", "name": "ORDERS"},
+        {"resource": "consumer", "action": "create", "stream": "ORDERS", "name": "ORDERS_WORKER"},
+    ]}}]
+
+
+def test_generic_typed_state_call_can_resolve_multiple_canonical_operations() -> None:
+    source = """import nats
+
+async def run() -> None:
+    client = await nats.connect()
+    await client.combined(\"events.created\")
+"""
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        package_paths = stage_nats_sdk_catalog(root / "catalog")
+        project = root / "project"
+        project.mkdir()
+        source_path = project / "app.py"
+        source_path.write_text(source, encoding="utf-8")
+        discovery = ProjectDiscovery().discover(project, DiscoveryOptions(package_paths=package_paths, discover_installed_sdk_mappings=False))
+        original = discovery.sdk_mappings[0]
+        document = copy.deepcopy(original.mapping)
+        document["python"]["calls"].append(
+            {
+                "id": "combined",
+                "symbols": [{"module": "example", "class": "CombinedClient", "method": "combined"}],
+                "receiverState": "nats.connection",
+                "operations": [
+                    {"operationRef": "subject.publish", "operationBindings": {"subject": {"argument": {"position": 0, "keyword": "subject"}}}},
+                    {"operationRef": "subject.subscribe", "operationBindings": {"subject": {"argument": {"position": 0, "keyword": "subject"}}}},
+                ],
+            }
+        )
+        mapping = SDKMappingArtifact(original.distribution, original.distribution_version, original.name, original.index_path, original.mapping_path, original.mapping_sha256, document)
+        conditions, extensions = SDKPythonExtractor([mapping], discovery.sdk_extensions).extract([source_path], project)
+
+    assert extensions == ["https://runtimeconditions.io/extensions/nats-service/0.1.0/runtimeconditions.extension.yaml"]
+    assert conditions == [{"kind": "nats", "interface": {"type": "service", "operations": [{"resource": "connection", "action": "connect"}, {"resource": "subject", "action": "publish", "subject": "events.created"}, {"resource": "subject", "action": "subscribe", "subject": "events.created"}]}}]
 
 
 def test_aws_managed_transfer_composes_all_mapped_runtime_paths() -> None:
@@ -492,6 +583,27 @@ def stage_aws_sdk_catalog(root: Path) -> list[Path]:
     extension_path = root / "extensions/aws-s3/0.1.0/runtimeconditions.extension.yaml"
     extension_path.parent.mkdir(parents=True)
     shutil.copyfile(AWS_EXTENSION, extension_path)
+    return [site, root / "extensions"]
+
+
+def stage_nats_sdk_catalog(root: Path) -> list[Path]:
+    site = root / "site"
+    mapping = yaml.safe_load(NATS_MAPPING.read_text(encoding="utf-8"))
+    version = str(mapping["metadata"]["distributionVersion"])
+    mapping_path = site / "nats/runtimeconditions/mappings/nats-service.yaml"
+    mapping_path.parent.mkdir(parents=True)
+    shutil.copyfile(NATS_MAPPING, mapping_path)
+    index = {
+        "apiVersion": "runtimeconditions.io/sdk-mapping/v1alpha1",
+        "kind": "RuntimeConditionsSDKMappingIndex",
+        "metadata": {"distribution": "nats-py", "distributionVersion": version, "language": "python"},
+        "mappings": [{"name": mapping["metadata"]["name"], "service": "nats", "path": "nats/runtimeconditions/mappings/nats-service.yaml", "sha256": hashlib.sha256(mapping_path.read_bytes()).hexdigest()}],
+    }
+    index_path = site / "nats/runtimeconditions/index.yaml"
+    index_path.write_text(yaml.safe_dump(index, sort_keys=False), encoding="utf-8")
+    extension_path = root / "extensions/nats-service/0.1.0/runtimeconditions.extension.yaml"
+    extension_path.parent.mkdir(parents=True)
+    shutil.copyfile(NATS_EXTENSION, extension_path)
     return [site, root / "extensions"]
 
 

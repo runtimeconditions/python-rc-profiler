@@ -27,6 +27,7 @@ Current implementation:
   - source class/function existence, string argument indexes, class argument indexes, and constant values
 - Generates Runtime Conditions Profiles from `RuntimeConditionsBinding` declarative Python calls.
 - Resolves direct mapped SDK method calls, the source-verified callable-delegation transformation represented by Kubernetes Python `Watch.stream`, and the first producer/state/method flow represented by Kubernetes Python `DynamicClient`.
+- Resolves a generic SDK-owned state contract for awaited factories, receiver-produced values, inherited or new dependency identities, positional and keyword arguments, typed configuration fields, literal lists, alternative binding sources, and values retained on returned SDK objects. SDK-specific names and semantics remain entirely in generated mapping metadata.
 - Resolves the accepted AWS Python client and resource factories, aliases, generated botocore methods, cross-module application factories, constructor injection, resource relations and actions, owner-qualified calls, and nested s3transfer operation paths.
 - Verifies SDK mapping file and semantic digests, installed distribution identity and version, and exact extension release coordinates before extraction.
 - Validates SDK-derived conditions against the exact extension JSON Schema and emits no inferred condition when a delegated callable, required dynamic coordinate, or state-producing resource selector cannot be resolved statically.
@@ -37,7 +38,7 @@ Not implemented yet:
 
 - SDK/runtime `RuntimeConditionsPackage` extraction.
 - Automatic retrieval or bundled-catalog resolution of the immutable extension release required by an installed SDK mapping; the current integration receives that exact release through an explicit package path.
-- SDK condition transformations beyond direct calls, the first higher-order callable delegation, and the first statically cataloged stateful resource flow.
+- Additional condition transformations beyond direct calls, higher-order callable delegation, statically cataloged resource flows, and the generic typed-state contract currently exercised by NATS Python.
 - AWS paginator, collection, transfer-class, branch-predicate, and exact execution-path selection patterns not exercised by the seven accepted fixtures.
 
 ## Setup

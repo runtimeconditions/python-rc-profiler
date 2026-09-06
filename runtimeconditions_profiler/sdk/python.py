@@ -64,6 +64,7 @@ class ResolvedCondition:
     kind: str
     interface_type: str
     operation: dict[str, Any]
+    dependency_identity: str | None = None
 
 
 class SDKMappingIndex:
@@ -314,6 +315,35 @@ class SDKConditionResolver:
             self._validate_condition(extension, item)
         return resolved
 
+    def resolve_bound_operation(self, artifact: SDKMappingArtifact, operation_name: str, values: dict[str, Any], dependency_identity: str | None) -> list[ResolvedCondition]:
+        mapping = artifact.mapping
+        matches = [item for item in mapping.get("operations", []) if isinstance(item, dict) and item.get("name") == operation_name]
+        if len(matches) != 1:
+            raise RuntimeConditionsError(f"{artifact.name}: expected one bound SDK operation {operation_name}, found {len(matches)}")
+        conditions = matches[0].get("conditions")
+        if not isinstance(conditions, list) or not conditions:
+            raise RuntimeConditionsError(f"{artifact.name}: SDK operation {operation_name} has no conditions")
+        resolved: list[ResolvedCondition] = []
+        for item in conditions:
+            if not isinstance(item, dict) or not isinstance(item.get("operation"), dict) or not isinstance(item.get("kind"), str) or not isinstance(item.get("interfaceType"), str):
+                raise RuntimeConditionsError(f"{artifact.name}: SDK operation {operation_name} contains an invalid condition")
+            bindings = item.get("bindings", {})
+            required = bindings.get("required", []) if isinstance(bindings, dict) else []
+            optional = bindings.get("optional", []) if isinstance(bindings, dict) else []
+            if not isinstance(required, list) or not isinstance(optional, list) or any(not isinstance(field, str) for field in [*required, *optional]):
+                raise RuntimeConditionsError(f"{artifact.name}: SDK operation {operation_name} contains invalid binding requirements")
+            if any(field not in values for field in required):
+                continue
+            operation = copy.deepcopy(item["operation"])
+            for field in [*required, *optional]:
+                if field in values:
+                    operation[field] = copy.deepcopy(values[field])
+            resolved.append(ResolvedCondition(mapping["extension"]["id"], item["kind"], item["interfaceType"], operation, dependency_identity))
+        extension = self._extension_for(mapping)
+        for item in resolved:
+            self._validate_condition(extension, item)
+        return resolved
+
     def resolve_stateful_operation(self, artifact: SDKMappingArtifact, operation_name: str, state: dict[str, Any], scope: str) -> list[ResolvedCondition]:
         mapping = artifact.mapping
         matches = [item for item in mapping.get("operations", []) if isinstance(item, dict) and item.get("name") == operation_name]
@@ -409,14 +439,14 @@ class SDKPythonExtractor:
         for item in composition.analyze():
             if item not in resolved:
                 resolved.append(item)
-        grouped: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+        grouped: dict[tuple[str, str, str, str | None], list[dict[str, Any]]] = {}
         for item in resolved:
-            operations = grouped.setdefault((item.extension_id, item.kind, item.interface_type), [])
+            operations = grouped.setdefault((item.extension_id, item.kind, item.interface_type, item.dependency_identity), [])
             if item.operation not in operations:
                 operations.append(item.operation)
-        conditions = [{"kind": kind, "interface": {"type": interface_type, "operations": operations}} for (_, kind, interface_type), operations in grouped.items()]
+        conditions = [{"kind": kind, "interface": {"type": interface_type, "operations": operations}} for (_, kind, interface_type, _), operations in grouped.items()]
         dependencies = {item.id: item.definition.dependencies for item in self.extensions}
         extension_ids: set[str] = set()
-        for extension_id, _, _ in grouped:
+        for extension_id, _, _, _ in grouped:
             add_extension_closure(extension_id, dependencies, extension_ids)
         return conditions, sorted(extension_ids)

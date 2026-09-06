@@ -113,6 +113,32 @@ class BoundSDKStatefulResourceMethod:
     method: str
 
 
+@dataclass(frozen=True)
+class SDKTypedValueObject:
+    type_name: str
+    fields: tuple[tuple[str, Any], ...]
+
+    def field(self, name: str) -> Any:
+        return dict(self.fields).get(name, UNKNOWN)
+
+
+@dataclass(frozen=True)
+class SDKTypedStateValue:
+    mapping: MappingKey
+    state_type: str
+    dependency_identity: str
+    fields: tuple[tuple[str, Any], ...] = ()
+
+    def field(self, name: str) -> Any:
+        return dict(self.fields).get(name, UNKNOWN)
+
+
+@dataclass(frozen=True)
+class BoundSDKTypedStateMethod:
+    state: SDKTypedStateValue
+    method: str
+
+
 @dataclass
 class ModuleInfo:
     name: str
@@ -159,6 +185,9 @@ class SDKCompositionRegistry:
         self.client_factories: list[tuple[SDKMappingArtifact, dict[str, Any], str]] = []
         self.resource_factories: list[tuple[SDKMappingArtifact, dict[str, Any], str]] = []
         self.stateful_factories: list[tuple[SDKMappingArtifact, dict[str, Any], str]] = []
+        self.typed_factories: list[tuple[SDKMappingArtifact, dict[str, Any], str]] = []
+        self.value_types: list[tuple[SDKMappingArtifact, dict[str, Any], str]] = []
+        self.typed_calls: dict[tuple[MappingKey, str, str], list[dict[str, Any]]] = {}
         for artifact in artifacts:
             key = (artifact.distribution, artifact.name)
             previous = self.artifacts.get(key)
@@ -191,6 +220,31 @@ class SDKCompositionRegistry:
                     if not isinstance(symbol, str) or not symbol:
                         raise RuntimeConditionsError(f"{artifact.name}: invalid stateful resource constructor symbol")
                     self.stateful_factories.append((artifact, flow, symbol))
+            for factory in python.get("factories", []):
+                if not isinstance(factory, dict):
+                    raise RuntimeConditionsError(f"{artifact.name}: invalid typed-state factory")
+                for symbol in factory.get("symbols", []):
+                    if not isinstance(symbol, str) or not symbol:
+                        raise RuntimeConditionsError(f"{artifact.name}: invalid typed-state factory symbol")
+                    self.typed_factories.append((artifact, factory, symbol))
+            for value_type in python.get("valueTypes", []):
+                if not isinstance(value_type, dict) or not isinstance(value_type.get("id"), str):
+                    raise RuntimeConditionsError(f"{artifact.name}: invalid Python SDK value type")
+                for symbol in value_type.get("symbols", []):
+                    if not isinstance(symbol, str) or not symbol:
+                        raise RuntimeConditionsError(f"{artifact.name}: invalid Python SDK value-type symbol")
+                    self.value_types.append((artifact, value_type, symbol))
+            for call in python.get("calls", []):
+                if not isinstance(call, dict) or not isinstance(call.get("receiverState"), str):
+                    continue
+                symbols = call.get("symbols", [])
+                if not isinstance(symbols, list) or not symbols:
+                    raise RuntimeConditionsError(f"{artifact.name}: typed-state call has no symbols")
+                methods = {symbol.get("method") for symbol in symbols if isinstance(symbol, dict) and isinstance(symbol.get("method"), str)}
+                if not methods:
+                    raise RuntimeConditionsError(f"{artifact.name}: typed-state call must declare at least one method name")
+                for method in methods:
+                    self.typed_calls.setdefault((key, call["receiverState"], method), []).append(call)
 
     def canonical_symbol(self, name: str) -> str:
         seen: set[str] = set()
@@ -234,6 +288,43 @@ class SDKCompositionRegistry:
             self._ensure_dependencies(artifact)
             return SDKStatefulFlowValue((artifact.distribution, artifact.name), flow["id"])
         return UNKNOWN if matched_symbol else None
+
+    def typed_factory(self, symbol: str, positional: list[Any], keywords: dict[str, Any], identity_seed: str) -> tuple[list[ResolvedCondition], Any] | None:
+        canonical = self.canonical_symbol(symbol)
+        value_matches = [(artifact, value_type) for artifact, value_type, declared_symbol in self.value_types if self.canonical_symbol(declared_symbol) == canonical]
+        if len(value_matches) > 1:
+            raise RuntimeConditionsError(f"ambiguous Python SDK value type {canonical}")
+        if value_matches:
+            artifact, value_type = value_matches[0]
+            self._ensure_dependencies(artifact)
+            fields = self._resolve_bindings(value_type.get("fields", {}), None, positional, keywords)
+            return [], SDKTypedValueObject(value_type["id"], tuple(sorted(fields.items())))
+        factory_matches = [(artifact, factory) for artifact, factory, declared_symbol in self.typed_factories if self.canonical_symbol(declared_symbol) == canonical]
+        if len(factory_matches) > 1:
+            raise RuntimeConditionsError(f"ambiguous Python SDK typed-state factory {canonical}")
+        if not factory_matches:
+            return None
+        artifact, factory = factory_matches[0]
+        self._ensure_dependencies(artifact)
+        dependency_identity = self._factory_dependency_identity(factory, positional, keywords, identity_seed)
+        conditions = self._resolve_typed_operation(artifact, factory, None, positional, keywords, dependency_identity)
+        argument_state = factory.get("argumentState")
+        binding = argument_state.get("argument") if isinstance(argument_state, dict) else None
+        receiver = self._argument(binding, positional, keywords)
+        inherited = receiver if isinstance(receiver, SDKTypedStateValue) else None
+        return conditions, self._produce_typed_state(artifact, factory.get("produces"), inherited, positional, keywords, identity_seed)
+
+    def typed_state_method(self, value: SDKTypedStateValue, method: str, positional: list[Any], keywords: dict[str, Any], identity_seed: str) -> tuple[list[ResolvedCondition], Any]:
+        matches = self.typed_calls.get((value.mapping, value.state_type, method), [])
+        if len(matches) > 1:
+            artifact = self._artifact(value.mapping)
+            raise RuntimeConditionsError(f"{artifact.name}: ambiguous typed-state call {value.state_type}.{method}")
+        if not matches:
+            return [], UNKNOWN
+        artifact = self._artifact(value.mapping)
+        call = matches[0]
+        conditions = self._resolve_typed_operation(artifact, call, value, positional, keywords, value.dependency_identity)
+        return conditions, self._produce_typed_state(artifact, call.get("produces"), value, positional, keywords, identity_seed)
 
     def stateful_member(self, value: SDKStatefulFlowValue, member: str) -> Any:
         artifact, flow = self._stateful_flow(value)
@@ -413,6 +504,117 @@ class SDKCompositionRegistry:
             if key != "operationRef":
                 result.extend(self._operation_refs(item))
         return result
+
+    def _factory_dependency_identity(self, factory: dict[str, Any], positional: list[Any], keywords: dict[str, Any], identity_seed: str) -> str:
+        produced = factory.get("produces")
+        if not isinstance(produced, dict):
+            raise RuntimeConditionsError("typed-state factory has no produced state")
+        policy = produced.get("dependencyIdentity")
+        if policy == "new":
+            return identity_seed
+        if policy == "inherit":
+            argument_state = factory.get("argumentState")
+            binding = argument_state.get("argument") if isinstance(argument_state, dict) else None
+            value = self._argument(binding, positional, keywords)
+            if isinstance(value, SDKTypedStateValue):
+                return value.dependency_identity
+            raise RuntimeConditionsError("typed-state factory cannot inherit an unresolved dependency identity")
+        raise RuntimeConditionsError("typed-state factory must declare dependencyIdentity as new or inherit")
+
+    def _produce_typed_state(self, artifact: SDKMappingArtifact, produced: Any, receiver: SDKTypedStateValue | None, positional: list[Any], keywords: dict[str, Any], identity_seed: str) -> Any:
+        if produced is None:
+            return UNKNOWN
+        if not isinstance(produced, dict) or not isinstance(produced.get("stateType"), str):
+            raise RuntimeConditionsError(f"{artifact.name}: typed-state producer has an invalid state type")
+        policy = produced.get("dependencyIdentity")
+        if policy == "inherit" and receiver is not None:
+            dependency_identity = receiver.dependency_identity
+        elif policy == "new":
+            dependency_identity = identity_seed
+        else:
+            raise RuntimeConditionsError(f"{artifact.name}: typed-state producer must declare a resolvable dependency identity")
+        fields = self._resolve_bindings(produced.get("bindings", {}), receiver, positional, keywords)
+        return SDKTypedStateValue((artifact.distribution, artifact.name), produced["stateType"], dependency_identity, tuple(sorted(fields.items())))
+
+    def _resolve_typed_operation(self, artifact: SDKMappingArtifact, record: dict[str, Any], receiver: SDKTypedStateValue | None, positional: list[Any], keywords: dict[str, Any], dependency_identity: str) -> list[ResolvedCondition]:
+        if "operationRef" in record and "operations" in record:
+            raise RuntimeConditionsError(f"{artifact.name}: typed-state call cannot declare both operationRef and operations")
+        if "operationRef" not in record and "operations" not in record:
+            return []
+        entries = record.get("operations") if "operations" in record else [record]
+        if not isinstance(entries, list):
+            raise RuntimeConditionsError(f"{artifact.name}: typed-state call operations must be a list")
+        resolved: list[ResolvedCondition] = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                raise RuntimeConditionsError(f"{artifact.name}: typed-state call contains an invalid operation entry")
+            reference = entry.get("operationRef")
+            target = artifact
+            if isinstance(reference, str):
+                operation_name = reference
+            elif isinstance(reference, dict):
+                operation_name = reference.get("operation")
+                if "mapping" in reference:
+                    target = self._artifact(self._mapping_key(reference, artifact))
+            else:
+                operation_name = None
+            if not isinstance(operation_name, str) or not operation_name:
+                raise RuntimeConditionsError(f"{artifact.name}: typed-state call has an invalid operation reference")
+            values = self._resolve_bindings(entry.get("operationBindings", {}), receiver, positional, keywords)
+            for condition in self.resolver.resolve_bound_operation(target, operation_name, {field: self._native_value(value) for field, value in values.items()}, dependency_identity):
+                if condition not in resolved:
+                    resolved.append(condition)
+        return resolved
+
+    def _resolve_bindings(self, bindings: Any, receiver: SDKTypedStateValue | None, positional: list[Any], keywords: dict[str, Any]) -> dict[str, Any]:
+        if not isinstance(bindings, dict):
+            raise RuntimeConditionsError("typed-state bindings must be an object")
+        result: dict[str, Any] = {}
+        for field, binding in bindings.items():
+            if not isinstance(field, str):
+                raise RuntimeConditionsError("typed-state binding field names must be strings")
+            value = self._resolve_binding(binding, receiver, positional, keywords)
+            if self._binding_value_is_present(value):
+                result[field] = value
+        return result
+
+    def _resolve_binding(self, binding: Any, receiver: SDKTypedStateValue | None, positional: list[Any], keywords: dict[str, Any]) -> Any:
+        if not isinstance(binding, dict):
+            return UNKNOWN
+        alternatives = binding.get("anyOf")
+        if isinstance(alternatives, list):
+            for alternative in alternatives:
+                value = self._resolve_binding(alternative, receiver, positional, keywords)
+                if self._binding_value_is_present(value):
+                    return value
+            return UNKNOWN
+        argument = binding.get("argument")
+        if isinstance(argument, dict):
+            value = self._argument(argument, positional, keywords)
+            field = argument.get("field")
+            if field is None:
+                return value
+            if not isinstance(field, str) or not field:
+                raise RuntimeConditionsError("typed-state argument field must be a non-empty string")
+            if isinstance(value, SDKTypedValueObject):
+                return value.field(field)
+            if isinstance(value, LiteralValue) and isinstance(value.value, dict) and field in value.value:
+                return LiteralValue(value.value[field])
+            return UNKNOWN
+        state_field = binding.get("state")
+        if isinstance(state_field, str) and receiver is not None:
+            return receiver.field(state_field)
+        if "literal" in binding:
+            return LiteralValue(binding["literal"])
+        return UNKNOWN
+
+    def _binding_value_is_present(self, value: Any) -> bool:
+        return value is not UNKNOWN and not (isinstance(value, LiteralValue) and value.value is None)
+
+    def _native_value(self, value: Any) -> Any:
+        if isinstance(value, LiteralValue):
+            return value.value
+        raise RuntimeConditionsError("typed-state operation binding did not resolve to a literal value")
 
     def _service_matches(self, factory: dict[str, Any], positional: list[Any], keywords: dict[str, Any]) -> bool:
         selector = factory.get("serviceSelector", {})
@@ -668,7 +870,9 @@ class SDKCompositionAnalyzer:
                     return True, value
             elif isinstance(statement, (ast.With, ast.AsyncWith)):
                 for item in statement.items:
-                    self._eval(item.context_expr, frame)
+                    value = self._eval(item.context_expr, frame)
+                    if item.optional_vars is not None:
+                        self._assign(item.optional_vars, value, frame)
                 returned, value = self._exec_block(statement.body, frame)
                 if returned:
                     return True, value
@@ -693,6 +897,8 @@ class SDKCompositionAnalyzer:
             return UNKNOWN
         if isinstance(expression, ast.Constant):
             return LiteralValue(expression.value)
+        if isinstance(expression, ast.Await):
+            return self._eval(expression.value, frame)
         if isinstance(expression, ast.Name):
             return self._name(expression.id, frame)
         if isinstance(expression, ast.Attribute):
@@ -715,13 +921,22 @@ class SDKCompositionAnalyzer:
                 return self.registry.stateful_member(owner, expression.attr)
             if isinstance(owner, SDKStatefulResourceValue):
                 return BoundSDKStatefulResourceMethod(owner, expression.attr)
+            if isinstance(owner, SDKTypedStateValue):
+                return BoundSDKTypedStateMethod(owner, expression.attr)
             return UNKNOWN
         if isinstance(expression, ast.Call):
             callee = self._eval(expression.func, frame)
             positional = [self._eval(item, frame) for item in expression.args]
             keywords = {item.arg: self._eval(item.value, frame) for item in expression.keywords if item.arg is not None}
-            return self._call(callee, positional, keywords)
-        if isinstance(expression, (ast.List, ast.Tuple, ast.Set)):
+            identity_seed = f"{frame.module.name}:{expression.lineno}:{expression.col_offset}"
+            return self._call(callee, positional, keywords, identity_seed)
+        if isinstance(expression, (ast.List, ast.Tuple)):
+            values = [self._eval(item, frame) for item in expression.elts]
+            if all(isinstance(value, LiteralValue) for value in values):
+                native = [value.value for value in values]
+                return LiteralValue(tuple(native) if isinstance(expression, ast.Tuple) else native)
+            return UNKNOWN
+        if isinstance(expression, ast.Set):
             for item in expression.elts:
                 self._eval(item, frame)
             return UNKNOWN
@@ -771,7 +986,7 @@ class SDKCompositionAnalyzer:
                 return module.runtime_values[member]
         return ExternalSymbol(name)
 
-    def _call(self, callee: Any, positional: list[Any], keywords: dict[str, Any]) -> Any:
+    def _call(self, callee: Any, positional: list[Any], keywords: dict[str, Any], identity_seed: str) -> Any:
         if isinstance(callee, FunctionValue):
             return self._execute(self.functions[callee.name], positional, keywords).value
         if isinstance(callee, ClassValue):
@@ -782,6 +997,11 @@ class SDKCompositionAnalyzer:
             function = self.functions.get(callee.function_name)
             return self._execute(function, positional, keywords, callee.instance).value if function else UNKNOWN
         if isinstance(callee, ExternalSymbol):
+            typed = self.registry.typed_factory(callee.name, positional, keywords, identity_seed)
+            if typed is not None:
+                conditions, value = typed
+                self._add(conditions)
+                return value
             produced = self.registry.factory(callee.name, positional, keywords)
             if produced is not None:
                 return produced
@@ -798,6 +1018,10 @@ class SDKCompositionAnalyzer:
             return self.registry.produce_stateful_resource(callee.flow, positional, keywords)
         if isinstance(callee, BoundSDKStatefulResourceMethod):
             conditions, value = self.registry.resolve_stateful_resource_method(callee.resource, callee.method, positional, keywords)
+            self._add(conditions)
+            return value
+        if isinstance(callee, BoundSDKTypedStateMethod):
+            conditions, value = self.registry.typed_state_method(callee.state, callee.method, positional, keywords, identity_seed)
             self._add(conditions)
             return value
         return UNKNOWN
