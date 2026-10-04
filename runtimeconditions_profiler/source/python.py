@@ -74,11 +74,22 @@ class PythonSourceIndex:
                 )
 
     def _visit_module(self, tree: ast.Module, module: str) -> None:
+        functions: dict[str, list[str]] = {}
+        annotations: dict[str, dict[str, str]] = {}
         for node in tree.body:
             if isinstance(node, (ast.Assign, ast.AnnAssign)):
                 self._collect_assignment(node, "")
             if isinstance(node, ast.ClassDef):
                 self._collect_class(node, module)
+            if isinstance(node, ast.FunctionDef):
+                functions[node.name] = [arg.arg for arg in node.args.args]
+                annotations[node.name] = {
+                    arg.arg: annotation_name(arg.annotation)
+                    for arg in node.args.args
+                    if arg.annotation is not None
+                }
+        if functions:
+            self.classes[module] = PythonClass(module, functions, annotations)
 
     def _collect_class(self, node: ast.ClassDef, module: str) -> None:
         functions: dict[str, list[str]] = {}
@@ -244,4 +255,8 @@ def arg_indexes(mapping: SymbolMapping) -> list[tuple[str, int]]:
         result.append(("enumArg", mapping.enum_arg))
     for _, index in mapping.string_args.items():
         result.append(("stringArg", index))
+    for write in mapping.writes:
+        argument = write.get("argument")
+        if isinstance(argument, dict) and isinstance(argument.get("position"), int):
+            result.append(("stringArg", argument["position"]))
     return result

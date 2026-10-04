@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any, Optional
 from urllib.parse import urlparse
 
@@ -21,6 +23,7 @@ class ArtifactValidator:
     def _validate_one(self, artifact: RuntimeConditionsArtifact) -> ValidatedArtifact:
         item = ValidatedArtifact(artifact=artifact)
         manifest_doc: dict[str, Any] | None = None
+        manifest_extension_sha256: str | None = None
         try:
             manifest_doc = Yaml.load(uri_to_path(artifact.manifest_uri))
         except Exception as exc:
@@ -40,6 +43,7 @@ class ArtifactValidator:
 
             if artifact.kind == "binding":
                 item.manifest_extension_id = require_scalar(item, metadata, artifact.manifest_uri, "metadata.extension")
+                manifest_extension_sha256 = scalar(metadata.get("extensionSha256"))
                 if section is not None:
                     require_scalar(item, section, artifact.manifest_uri, "python.package")
                 override = scalar(metadata.get("extensionDefinition"))
@@ -57,6 +61,28 @@ class ArtifactValidator:
                 require_value(item, extension_doc.get("kind"), EXTENSION_KIND, item.extension_definition_uri, "kind")
                 metadata = as_map(extension_doc.get("metadata"))
                 item.extension_id = require_scalar(item, metadata, item.extension_definition_uri, "metadata.id")
+                extension_digest = scalar(metadata.get("semanticSha256"))
+                if extension_digest:
+                    actual_digest = hashlib.sha256(
+                        json.dumps(
+                            extension_doc.get("spec", {}),
+                            sort_keys=True,
+                            separators=(",", ":"),
+                            ensure_ascii=False,
+                        ).encode("utf-8")
+                    ).hexdigest()
+                    if extension_digest != actual_digest:
+                        item.add(
+                            "extension-definition",
+                            item.extension_definition_uri,
+                            f"metadata.semanticSha256 is {extension_digest}, expected {actual_digest}",
+                        )
+                    if manifest_extension_sha256 and manifest_extension_sha256 != extension_digest:
+                        item.add(
+                            "extension-definition",
+                            artifact.manifest_uri,
+                            f"binding extensionSha256 {manifest_extension_sha256} does not match {extension_digest}",
+                        )
                 validate_extension_id(item, item.extension_id, item.extension_definition_uri)
                 if item.extension_id:
                     item.extension_definition = parse_extension_definition(
@@ -142,4 +168,3 @@ def require_value(artifact: ValidatedArtifact, actual: Any, expected: str, sourc
         artifact.add("package-manifest", source, f"{field_name} is required")
     elif parsed != expected:
         artifact.add("package-manifest", source, f"{field_name} must be {expected}")
-

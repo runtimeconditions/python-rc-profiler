@@ -11,8 +11,9 @@ The Python profiler generates Runtime Conditions Profiles from declarative Pytho
 
 Current implementation:
 
-- Supports Python 3.10 and newer.
+- Supports Python 3.11 and newer, matching the minimum runtime for generated Python bindings.
 - Uses standard `pyproject.toml` metadata so the profiler can be installed with `pip` or run with `uv`.
+- Resolves imports of generated binding packages through installed distribution metadata and reads their four fixed package resources without importing package code.
 - Discovers Runtime Conditions artifacts from explicit package paths and project-configured package paths:
   - `runtimeconditions.bindings.yaml`
   - `runtimeconditions.extension.yaml`
@@ -36,70 +37,46 @@ Current implementation:
 
 Not implemented yet:
 
+- Structural validation and extraction of installed generated extension bindings. Import-to-distribution resolution and fixed-resource loading are implemented.
 - SDK/runtime `RuntimeConditionsPackage` extraction.
 - Automatic retrieval or bundled-catalog resolution of the immutable extension release required by an installed SDK mapping; the current integration receives that exact release through an explicit package path.
 - Additional condition transformations beyond direct calls, higher-order callable delegation, statically cataloged resource flows, and the generic typed-state contract currently exercised by NATS Python.
 - AWS paginator, collection, transfer-class, branch-predicate, and exact execution-path selection patterns not exercised by the seven accepted fixtures.
 
-## Setup
+## Install the CLI
 
-Using pip:
+Build the wheel from this repository, then install it in the Python 3.11 or
+newer environment containing the workload's binding distributions. An editable
+install is needed only for development.
 
 ```sh
-python3.10 -m venv .venv
+python3.11 -m pip wheel . --no-deps --wheel-dir dist
+python3.11 -m pip install dist/runtimeconditions_profiler-0.1.0-py3-none-any.whl
+```
+
+The installed command can be invoked from any working directory. Its profile
+generation interface takes the workload directory and identity:
+
+```sh
+runtimeconditions-python-profiler profile generate \
+  --project /absolute/path/to/workload \
+  --name my-workload \
+  --workload-uri example/my-workload \
+  --workload-version 1.0.0 \
+  --out /absolute/path/to/profile.yaml
+```
+
+The `profile generate` path now resolves imported binding packages and reads
+their installed resources. It reports an error before writing a profile until
+structural validation and extraction are implemented. For the existing
+handwritten bindings, `generate` retains the development-only `--package-path`
+option.
+
+## Develop and test
+
+```sh
+python3.11 -m venv .venv
 . .venv/bin/activate
 python -m pip install -e '.[test]'
-```
-
-Using uv:
-
-```sh
-uv venv
-uv pip install -e '.[test]'
-```
-
-## Run
-
-Discover artifacts:
-
-```sh
-python profiler.py discover \
-  --project testdata/profile-generation/declarative-app \
-  --resolve-package-paths
-```
-
-Validate first-party Python bindings:
-
-```sh
-python profiler.py validate-extensions --root ../extensions
-```
-
-Generate a fixture profile:
-
-```sh
-python profiler.py generate \
-  --project testdata/profile-generation/declarative-app \
-  --package-path ../extensions/common-integrations/python \
-  --package-path ../extensions/env-configuration/python \
-  --name python-declarative-app \
-  --workload-uri example/python-declarative-app \
-  --workload-version test
-```
-
-Generate the Python request logger demo profile:
-
-```sh
-python profiler.py generate \
-  --project ../rc-demos/apps/request-logger-http-python \
-  --package-path ../extensions/common-integrations/python \
-  --package-path ../extensions/env-configuration/python \
-  --name request-logger-http \
-  --workload-uri github.com/runtimeconditions/rc-demos/apps/request-logger-http-python \
-  --workload-version dev
-```
-
-## Test
-
-```sh
 python -m pytest
 ```

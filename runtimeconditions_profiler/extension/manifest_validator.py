@@ -44,18 +44,18 @@ class ManifestVocabularyValidator:
         vocabulary: ExtensionVocabulary,
         declaration: SymbolMapping,
     ) -> None:
-        expect_exactly_one(
-            artifact,
-            vocabulary.kind_count(declaration.kind),
-            f"declaration kind {declaration.kind}",
-        )
-        if declaration.interface_type:
+        kind = declaration.kind or str(constant_write(declaration, "kind") or "")
+        expect_exactly_one(artifact, vocabulary.kind_count(kind), f"declaration kind {kind}")
+        interface_type = declaration.interface_type or str(constant_write(declaration, "interface.type") or "")
+        if interface_type:
             expect_exactly_one(
                 artifact,
-                vocabulary.interface_type_count(declaration.kind, declaration.interface_type),
-                f"declaration interfaceType {declaration.kind}/{declaration.interface_type}",
+                vocabulary.interface_type_count(kind, interface_type),
+                f"declaration interfaceType {kind}/{interface_type}",
             )
-        scopes = [(declaration.kind, declaration.interface_type)]
+        scopes = [(kind, interface_type)]
+        if declaration.writes:
+            scopes = self._validate_writes(artifact, vocabulary, declaration, scopes)
         for option in declaration.options:
             self._validate_option(artifact, vocabulary, option, scopes)
 
@@ -67,7 +67,9 @@ class ManifestVocabularyValidator:
         scopes: list[tuple[str, str]],
     ) -> None:
         nested_scopes = scopes
-        if option.target == "interface.spec":
+        if option.writes:
+            nested_scopes = self._validate_writes(artifact, vocabulary, option, scopes)
+        elif option.target == "interface.spec":
             for kind, interface_type in scopes:
                 expect_exactly_one(
                     artifact,
@@ -129,6 +131,64 @@ class ManifestVocabularyValidator:
         for nested in option.options:
             self._validate_option(artifact, vocabulary, nested, nested_scopes)
 
+    def _validate_writes(
+        self,
+        artifact: ValidatedArtifact,
+        vocabulary: ExtensionVocabulary,
+        mapping: SymbolMapping,
+        scopes: list[tuple[str, str]],
+    ) -> list[tuple[str, str]]:
+        current = scopes
+        for write in mapping.writes:
+            target = write.get("target")
+            value = write.get("value")
+            if target == "kind":
+                expect_exactly_one(artifact, vocabulary.kind_count(str(value)), f"binding write kind {value}")
+                current = [(str(value), interface_type) for _, interface_type in current]
+                continue
+            if target in ("name", "optional"):
+                continue
+            if target == "interface.type":
+                updated: list[tuple[str, str]] = []
+                for kind, _ in current:
+                    expect_exactly_one(
+                        artifact,
+                        vocabulary.interface_type_count(kind, str(value)),
+                        f"binding write interface.type {kind}/{value}",
+                    )
+                    updated.append((kind, str(value)))
+                current = updated
+                continue
+            if not isinstance(target, str) or not target.startswith("interface."):
+                artifact.add("package-manifest", artifact.artifact.manifest_uri, f"unsupported binding write target {target}")
+                continue
+            field = target.split(".")[1].removesuffix("[]")
+            candidates = write.get("values", [value])
+            for kind, interface_type in current:
+                expect_exactly_one(
+                    artifact,
+                    vocabulary.interface_field_count(kind, interface_type, field),
+                    f"binding write {target} for {kind}/{interface_type}",
+                )
+                for candidate in candidates:
+                    if not isinstance(candidate, dict):
+                        continue
+                    for child, child_value in candidate.items():
+                        if vocabulary.field_value_definition_count(f"{target}.{child}", kind, interface_type):
+                            expect_exactly_one(
+                                artifact,
+                                vocabulary.field_value_count(f"{target}.{child}", kind, interface_type, str(child_value)),
+                                f"binding write {target}.{child} value {child_value} for {kind}/{interface_type}",
+                            )
+        return current
+
+
+def constant_write(mapping: SymbolMapping, target: str):
+    for write in mapping.writes:
+        if write.get("target") == target and "value" in write:
+            return write["value"]
+    return None
+
 
 def validate_configuration_option(
     artifact: ValidatedArtifact,
@@ -176,4 +236,3 @@ def expect_exactly_one(artifact: ValidatedArtifact, count: int, message: str) ->
             artifact.artifact.manifest_uri,
             f"{message}: expected exactly one definition, got {count}",
         )
-

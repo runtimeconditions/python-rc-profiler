@@ -113,6 +113,14 @@ def validate_condition(
             f"{prefix}.interface.engine {engine} for {kind}/{interface_type}",
             add,
         )
+    for field in interface:
+        if field in {"type", "spec", "operations", "engine"}:
+            continue
+        expect_profile_count(
+            vocabulary.interface_field_count(kind, interface_type, field),
+            f"{prefix}.interface.{field} for {kind}/{interface_type}",
+            add,
+        )
     if "configuration" in condition:
         expect_profile_count(
             vocabulary.condition_field_count(kind, interface_type, "configuration"),

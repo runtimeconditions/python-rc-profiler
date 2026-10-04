@@ -5,6 +5,6 @@ requires-python = ">=3.10"
 
 [tool.runtimeconditions]
 package-paths = [
-  "../../../../extensions/common-integrations/python",
-  "../../../../extensions/env-configuration/python",
+  "../../../../extensions/catalog/rc/common-integrations/python",
+  "../../../../extensions/catalog/rc/env-configuration/python",
 ]

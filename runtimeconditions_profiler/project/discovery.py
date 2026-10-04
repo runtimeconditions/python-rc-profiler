@@ -12,7 +12,7 @@ except ModuleNotFoundError:  # pragma: no cover - exercised on Python 3.10
 from ..constants import BINDINGS_MANIFEST, EXTENSION_DEFINITION, PACKAGE_MANIFEST
 from ..extension import ArtifactValidator
 from ..models import DiscoveryOptions, DiscoveryResult, RuntimeConditionsArtifact
-from ..sdk.discovery import SDKArtifactDiscovery
+from ..sdk.direct import load_explicit_sdk_artifacts
 from ..util import as_map, dedupe_artifacts, dedupe_paths, ignored_path, scalar
 from ..yamlio import Yaml
 
@@ -100,7 +100,9 @@ class ProjectDiscovery:
             artifacts.extend(discovery.discover_path_artifact(package_path))
         artifacts = dedupe_artifacts(artifacts)
         validated = ArtifactValidator().validate(artifacts)
-        sdk_mappings, sdk_extensions, sdk_diagnostics = SDKArtifactDiscovery().discover([root, *package_paths], options.discover_installed_sdk_mappings)
+        sdk_mappings, sdk_extensions, sdk_diagnostics = load_explicit_sdk_artifacts(
+            options.mapping_paths, options.extension_paths
+        )
         return DiscoveryResult(root, project_type, package_paths, artifacts, validated, sdk_mappings, sdk_extensions, sdk_diagnostics)
 
 

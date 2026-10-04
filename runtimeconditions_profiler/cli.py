@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 from .main import (
@@ -16,11 +17,16 @@ from .main import (
     ArtifactDiscovery,
     ArtifactValidator,
 )
+from .sdk.resolver import BUNDLE_INDEX, bundle_artifact_paths, resolve_mappings
+from .project.installed import InstalledBindingDiscovery
+from .project.verify import InstalledBindingVerifier, VerifiedBindingSet
+from .profile.generated import GeneratedBindingExtractor
+from .profile.semantic import GeneratedProfileValidator
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="runtimeconditions-python-profiler")
-    subparsers = parser.add_subparsers(dest="command")
+    subparsers = parser.add_subparsers(dest="command", required=True)
 
     discover = subparsers.add_parser("discover")
     add_project_flags(discover)
@@ -33,6 +39,28 @@ def main(argv: list[str] | None = None) -> int:
     generate.add_argument("--workload-version", default="dev")
     generate.add_argument("--out")
 
+    profile = subparsers.add_parser("profile")
+    profile_commands = profile.add_subparsers(dest="profile_command", required=True)
+    profile_generate = profile_commands.add_parser("generate")
+    profile_generate.add_argument("--project", default=".")
+    profile_generate.add_argument("--name", required=True)
+    profile_generate.add_argument("--workload-uri", required=True)
+    profile_generate.add_argument("--workload-version", required=True)
+    profile_generate.add_argument("--out")
+    profile_verify = profile_commands.add_parser(
+        "verify-bindings",
+        help="verify installed generated bindings without running application or binding code",
+    )
+    profile_verify.add_argument("--project", default=".")
+    profile_verify.add_argument("--json", action="store_true")
+
+    mappings = subparsers.add_parser("mappings")
+    mapping_commands = mappings.add_subparsers(dest="mapping_command", required=True)
+    resolve = mapping_commands.add_parser("resolve")
+    resolve.add_argument("--project", default=".")
+    resolve.add_argument("--catalog", required=True)
+    resolve.add_argument("--out", default="")
+
     validate_one = subparsers.add_parser("validate-extension")
     validate_one.add_argument("--root", default=".")
     validate_one.add_argument("--catalog-root", action="append", default=[])
@@ -42,12 +70,18 @@ def main(argv: list[str] | None = None) -> int:
     validate_many.add_argument("--catalog-root", action="append", default=[])
 
     args = parser.parse_args(argv)
-    command = args.command or "discover"
+    command = args.command
     try:
         if command == "discover":
             return run_discover(args)
         if command == "generate":
             return run_generate(args)
+        if command == "profile" and args.profile_command == "generate":
+            return run_profile_generate(args)
+        if command == "profile" and args.profile_command == "verify-bindings":
+            return run_profile_verify_bindings(args)
+        if command == "mappings" and args.mapping_command == "resolve":
+            return run_resolve(args)
         if command == "validate-extension":
             return run_validate(args, plural=False)
         if command == "validate-extensions":
@@ -62,16 +96,45 @@ def add_project_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--project", default=".")
     parser.add_argument("--package-path", action="append", default=[])
     parser.add_argument("--resolve-package-paths", action="store_true")
-    parser.add_argument("--no-installed-sdk-mappings", action="store_true")
+    parser.add_argument("--mapping", action="append", default=[])
+    parser.add_argument("--extension", action="append", default=[])
+    parser.add_argument("--mappings", action="append", default=[])
 
 
 def discovery_options(args: argparse.Namespace) -> DiscoveryOptions:
     package_paths: list[Path] = []
-    for value in args.package_path:
+    for value in getattr(args, "package_path", []):
         for item in value.split(os.pathsep):
             if item.strip():
                 package_paths.append(Path(item))
-    return DiscoveryOptions(package_paths=package_paths, resolve_package_paths=args.resolve_package_paths, discover_installed_sdk_mappings=not args.no_installed_sdk_mappings)
+    project = Path(args.project).absolute().resolve()
+    bundle_paths = [Path(item) for item in getattr(args, "mappings", [])]
+    default_bundle = default_mapping_cache()
+    if args.command != "profile" and not bundle_paths and (default_bundle / BUNDLE_INDEX).is_file():
+        bundle_paths.append(default_bundle)
+    bundle_mappings, bundle_extensions = bundle_artifact_paths(project, bundle_paths)
+    return DiscoveryOptions(
+        package_paths=package_paths,
+        resolve_package_paths=getattr(args, "resolve_package_paths", False),
+        mapping_paths=[Path(item) for item in getattr(args, "mapping", [])] + bundle_mappings,
+        extension_paths=[Path(item) for item in getattr(args, "extension", [])] + bundle_extensions,
+    )
+
+
+def default_mapping_cache() -> Path:
+    return Path.home() / ".cache" / "runtimeconditions" / "mappings"
+
+
+def run_resolve(args: argparse.Namespace) -> int:
+    destination = Path(args.out).absolute() if args.out else default_mapping_cache()
+    resolved = resolve_mappings(Path(args.project), args.catalog, destination)
+    for entry in resolved:
+        print(
+            f"resolved {entry['package']} {entry['packageVersion']} "
+            f"to {entry['mapping']}"
+        )
+    print(f"runtimeconditions: resolved {len(resolved)} mapping(s) into {destination}", file=sys.stderr)
+    return 0
 
 
 def run_discover(args: argparse.Namespace) -> int:
@@ -150,6 +213,59 @@ def run_generate(args: argparse.Namespace) -> int:
         Path(args.out).write_text(yaml_text, encoding="utf-8")
     else:
         print(yaml_text, end="")
+    return 0
+
+
+def run_profile_generate(args: argparse.Namespace) -> int:
+    verified = verified_installed_bindings(Path(args.project))
+    extracted = GeneratedBindingExtractor(verified).extract(Path(args.project))
+    profile = GeneratedProfileValidator(verified).build(
+        extracted, args.name, args.workload_uri, args.workload_version,
+    )
+    yaml_text = ProfileYamlWriter.write(profile)
+    if args.out:
+        destination = Path(args.out)
+        temporary: Path | None = None
+        try:
+            descriptor, name = tempfile.mkstemp(prefix=f".{destination.name}.", dir=destination.parent)
+            temporary = Path(name)
+            with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
+                stream.write(yaml_text)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, destination)
+        except OSError as exc:
+            raise RuntimeConditionsError(f"cannot write profile {destination}: {exc}") from exc
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+    else:
+        print(yaml_text, end="")
+    return 0
+
+
+def verified_installed_bindings(project: Path) -> VerifiedBindingSet:
+    discovery = InstalledBindingDiscovery().discover(project)
+    return InstalledBindingVerifier().verify(discovery)
+
+
+def run_profile_verify_bindings(args: argparse.Namespace) -> int:
+    verified = verified_installed_bindings(Path(args.project))
+    packages = [
+        {
+            "distribution": item.installed.distribution,
+            "version": item.installed.version,
+            "importPackage": item.installed.import_package,
+            "extensionId": item.model["rootExtension"]["id"],
+            "modelSha256": item.model["metadata"]["semanticSha256"],
+        }
+        for item in verified.packages
+    ]
+    if args.json:
+        print(json.dumps({"packages": packages}, sort_keys=True))
+    else:
+        for item in packages:
+            print(f"verified {item['distribution']}=={item['version']} ({item['importPackage']})")
     return 0
 
 

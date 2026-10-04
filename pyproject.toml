@@ -7,11 +7,12 @@ name = "runtimeconditions-profiler"
 version = "0.1.0"
 description = "Runtime Conditions Python profiler"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
   "jsonschema>=4.23",
+  "packaging>=24.0",
   "PyYAML>=6.0",
-  "tomli>=2.0; python_version < '3.11'",
+  "rfc8785==0.1.4",
 ]
 
 [project.optional-dependencies]
@@ -24,6 +25,9 @@ runtimeconditions-python-profiler = "runtimeconditions_profiler.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["runtimeconditions_profiler*"]
+
+[tool.setuptools.package-data]
+runtimeconditions_profiler = ["schemas.json", "runtimeconditions.profile.v0.1.0.schema.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

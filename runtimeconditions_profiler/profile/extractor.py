@@ -9,7 +9,7 @@ from ..errors import RuntimeConditionsError
 from ..manifest.mapping import find_option, simple_name, strip_package_class
 from ..models import DiscoveryResult, ProfileOptions, SymbolMapping
 from ..project import ProjectDiscovery
-from ..sdk import SDKPythonExtractor
+from ..sdk.direct import DirectSDKPythonExtractor
 from ..source.python import PythonSourceIndex, expression_name, literal_string, workload_source_files
 from ..util import add_extension_closure, add_unique, deep_copy, diagnostics_text
 from .binding import BindingArtifact
@@ -27,8 +27,6 @@ class ProfileExtractor:
             for artifact in discovery.validated_artifacts
             if artifact.artifact.kind == "binding" and artifact.manifest is not None
         ]
-        if not bindings and not discovery.sdk_mappings:
-            raise RuntimeConditionsError("no RuntimeConditionsBinding artifacts or Python SDK mappings were discovered")
         source_files = workload_source_files(discovery.project_root)
         if not source_files:
             raise RuntimeConditionsError(f"no Python source files found under {discovery.project_root}")
@@ -44,7 +42,14 @@ class ProfileExtractor:
             if options.workload_version:
                 workload["version"] = options.workload_version
             profile = {"apiVersion": API_VERSION, "kind": "RuntimeConditionsProfile", "metadata": {"name": options.name}, "workload": workload, "extensions": [], "conditions": []}
-        sdk_conditions, sdk_extensions = SDKPythonExtractor(discovery.sdk_mappings, discovery.sdk_extensions).extract(source_files, discovery.project_root)
+        sdk_conditions: list[dict[str, Any]] = []
+        sdk_extensions: list[str] = []
+        if discovery.sdk_mappings:
+            direct_conditions, direct_extensions = DirectSDKPythonExtractor(
+                discovery.sdk_mappings, discovery.sdk_extensions
+            ).extract(source_files, discovery.project_root)
+            sdk_conditions.extend(direct_conditions)
+            sdk_extensions.extend(direct_extensions)
         for extension in sdk_extensions:
             add_unique(profile["extensions"], extension)
         for condition in sdk_conditions:
@@ -120,6 +125,13 @@ class PythonExtractionScanner:
         call: ast.Call,
         imports: ImportIndex,
     ) -> dict[str, Any]:
+        if declaration.writes:
+            condition: dict[str, Any] = {}
+            self.apply_generic_writes(condition, binding, declaration, call, imports)
+            for argument in call.args:
+                if isinstance(argument, ast.Call):
+                    self.apply_generic_option(condition, binding, declaration.options, argument, imports)
+            return condition
         name = ""
         if declaration.name_arg is not None:
             name = self.string_arg(call.args, declaration.name_arg, declaration.member_name, "name", binding, imports)
@@ -141,6 +153,70 @@ class PythonExtractionScanner:
             add_unique(self.used_extensions, option_binding.extension_id)
         remove_empty_configuration(condition)
         return condition
+
+    def apply_generic_option(
+        self,
+        condition: dict[str, Any],
+        binding: BindingArtifact,
+        options: list[SymbolMapping],
+        call: ast.Call,
+        imports: ImportIndex,
+    ) -> None:
+        identity = imports.call_identity(call.func)
+        if identity is None:
+            raise RuntimeConditionsError("generated binding option must be a directly imported call")
+        option = next(
+            (
+                item
+                for item in options
+                if item.member_name == identity.member_name
+                and (identity.class_name == item.class_name or identity.class_name.endswith(f".{item.class_name}"))
+            ),
+            None,
+        )
+        if option is None:
+            raise RuntimeConditionsError(f"{identity.class_name}.{identity.member_name} is not valid in this binding position")
+        self.apply_generic_writes(condition, binding, option, call, imports)
+        for argument in call.args:
+            if isinstance(argument, ast.Call):
+                self.apply_generic_option(condition, binding, option.options, argument, imports)
+
+    def apply_generic_writes(
+        self,
+        condition: dict[str, Any],
+        binding: BindingArtifact,
+        mapping: SymbolMapping,
+        call: ast.Call,
+        imports: ImportIndex,
+    ) -> None:
+        for write in mapping.writes:
+            if "value" in write:
+                values = [deep_copy(write["value"])]
+            elif "values" in write and isinstance(write["values"], list):
+                values = [deep_copy(item) for item in write["values"]]
+            else:
+                argument = write.get("argument", {})
+                position = argument.get("position") if isinstance(argument, dict) else None
+                if not isinstance(position, int) or position >= len(call.args):
+                    raise RuntimeConditionsError(f"{mapping.member_name} requires argument {position}")
+                expression = call.args[position]
+                if isinstance(expression, ast.Constant):
+                    values = [deep_copy(expression.value)]
+                else:
+                    values = [self.binding_value(expression, binding, imports)]
+            for value in values:
+                self.write_generic_target(condition, write["target"], value)
+
+    def write_generic_target(self, condition: dict[str, Any], target: str, value: Any) -> None:
+        current = condition
+        parts = target.split(".")
+        for part in parts[:-1]:
+            current = current.setdefault(part, {})
+        leaf = parts[-1]
+        if leaf.endswith("[]"):
+            current.setdefault(leaf[:-2], []).append(value)
+        else:
+            current[leaf] = value
 
     def condition_option_for_call(
         self,

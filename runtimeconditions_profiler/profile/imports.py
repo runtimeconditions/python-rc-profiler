@@ -23,6 +23,14 @@ class ImportIndex:
             binding.manifest.package: {mapping.class_name for mapping in binding.all_mappings()}
             for binding in bindings
         }
+        functions_by_package = {
+            binding.manifest.package: {
+                mapping.member_name
+                for mapping in binding.all_mappings()
+                if mapping.class_name == binding.manifest.package
+            }
+            for binding in bindings
+        }
         for node in tree.body:
             if isinstance(node, ast.Import):
                 for alias in node.names:
@@ -36,16 +44,22 @@ class ImportIndex:
                         index.wildcard_packages.add(node.module)
                         for class_name in classes_by_package[node.module]:
                             index.class_aliases[class_name] = f"{node.module}.{class_name}"
+                        for function_name in functions_by_package[node.module]:
+                            index.class_aliases[function_name] = f"{node.module}.{function_name}"
                         continue
                     if alias.name in classes_by_package[node.module]:
+                        index.class_aliases[alias.asname or alias.name] = f"{node.module}.{alias.name}"
+                    if alias.name in functions_by_package[node.module]:
                         index.class_aliases[alias.asname or alias.name] = f"{node.module}.{alias.name}"
         return index
 
     def call_identity(self, expr: ast.expr) -> Optional[CallIdentity]:
         name = expression_name(expr)
-        if not name or "." not in name:
+        if not name:
             return None
         normalized = self.normalize_name(name)
+        if "." not in normalized:
+            return None
         parts = normalized.split(".")
         if len(parts) < 2:
             return None
@@ -63,4 +77,3 @@ class ImportIndex:
         if first in self.package_aliases:
             return ".".join([self.package_aliases[first], *parts[1:]])
         return name
-

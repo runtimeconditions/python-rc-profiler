@@ -33,27 +33,27 @@ from runtimeconditions_profiler.models import SDKMappingArtifact  # noqa: E402
 from runtimeconditions_profiler.sdk.python import SDKPythonExtractor  # noqa: E402
 
 
-COMMON = ROOT / "extensions" / "common-integrations" / "python"
-ENV = ROOT / "extensions" / "env-configuration" / "python"
-KUBERNETES_EXTENSION = ROOT / "extensions" / "kubernetes-api" / "releases" / "0.1.0" / "runtimeconditions.extension.yaml"
-KUBERNETES_MAPPING = ROOT / "sdk" / "authorship" / "kubernetes-python" / "mappings" / "runtimeconditions.sdk-mapping.yaml"
-KUBERNETES_CONFIGMAP_APP = ROOT / "sdk" / "kubernetes" / "python" / "configmap-reader"
-KUBERNETES_WATCH_APP = ROOT / "sdk" / "kubernetes" / "python" / "pod-watcher"
-KUBERNETES_DYNAMIC_CONFIGMAP_APP = ROOT / "sdk" / "kubernetes" / "python" / "dynamic-configmap-lifecycle"
-KUBERNETES_DYNAMIC_CRD_APP = ROOT / "sdk" / "kubernetes" / "python" / "dynamic-crd-reader"
-KUBERNETES_DYNAMIC_WATCH_APP = ROOT / "sdk" / "kubernetes" / "python" / "dynamic-pod-watcher"
-AWS_EXTENSION = ROOT / "extensions" / "aws-s3" / "releases" / "0.1.0" / "runtimeconditions.extension.yaml"
+COMMON = ROOT / "extensions" / "catalog" / "rc" / "common-integrations" / "python"
+ENV = ROOT / "extensions" / "catalog" / "rc" / "env-configuration" / "python"
+KUBERNETES_EXTENSION = ROOT / "extensions" / "catalog" / "kubernetes" / "api" / "releases" / "0.1.0" / "runtimeconditions.extension.yaml"
+KUBERNETES_MAPPING = ROOT / "sdk" / "archive" / "research-v1" / "authorship" / "kubernetes-python" / "mappings" / "runtimeconditions.sdk-mapping.yaml"
+KUBERNETES_CONFIGMAP_APP = ROOT / "sdk" / "archive" / "research-v1" / "kubernetes" / "python" / "configmap-reader"
+KUBERNETES_WATCH_APP = ROOT / "sdk" / "archive" / "research-v1" / "kubernetes" / "python" / "pod-watcher"
+KUBERNETES_DYNAMIC_CONFIGMAP_APP = ROOT / "sdk" / "archive" / "research-v1" / "kubernetes" / "python" / "dynamic-configmap-lifecycle"
+KUBERNETES_DYNAMIC_CRD_APP = ROOT / "sdk" / "archive" / "research-v1" / "kubernetes" / "python" / "dynamic-crd-reader"
+KUBERNETES_DYNAMIC_WATCH_APP = ROOT / "sdk" / "archive" / "research-v1" / "kubernetes" / "python" / "dynamic-pod-watcher"
+AWS_EXTENSION = ROOT / "extensions" / "catalog" / "aws" / "s3" / "releases" / "0.1.0" / "runtimeconditions.extension.yaml"
 AWS_MAPPINGS = {
-    "boto3": ROOT / "extensions" / "aws-s3" / "mappings" / "boto3" / "runtimeconditions.sdk-mapping.yaml",
-    "botocore": ROOT / "extensions" / "aws-s3" / "mappings" / "botocore" / "runtimeconditions.sdk-mapping.yaml",
-    "s3transfer": ROOT / "extensions" / "aws-s3" / "mappings" / "s3transfer" / "runtimeconditions.sdk-mapping.yaml",
+    "boto3": ROOT / "extensions" / "catalog" / "aws" / "s3" / "archive" / "research-v1" / "mappings" / "boto3" / "runtimeconditions.sdk-mapping.yaml",
+    "botocore": ROOT / "extensions" / "catalog" / "aws" / "s3" / "archive" / "research-v1" / "mappings" / "botocore" / "runtimeconditions.sdk-mapping.yaml",
+    "s3transfer": ROOT / "extensions" / "catalog" / "aws" / "s3" / "archive" / "research-v1" / "mappings" / "s3transfer" / "runtimeconditions.sdk-mapping.yaml",
 }
 AWS_APPS = ROOT / "sdk" / "s3" / "python"
-AWS_PROFILE_RESULTS = ROOT / "sdk" / "authorship" / "aws-python" / "results" / "profiles"
-NATS_EXTENSION = ROOT / "extensions" / "nats-service" / "releases" / "0.1.0" / "runtimeconditions.extension.yaml"
-NATS_MAPPING = ROOT / "sdk" / "authorship" / "nats-python" / "mappings" / "runtimeconditions.sdk-mapping.yaml"
-NATS_APPS = ROOT / "sdk" / "nats" / "python"
-NATS_PROFILE_RESULTS = ROOT / "sdk" / "authorship" / "nats-python" / "results" / "profiles"
+AWS_PROFILE_RESULTS = ROOT / "sdk" / "archive" / "research-v1" / "authorship" / "aws-python" / "results" / "profiles"
+NATS_EXTENSION = ROOT / "extensions" / "catalog" / "nats" / "service" / "releases" / "0.1.0" / "runtimeconditions.extension.yaml"
+NATS_MAPPING = ROOT / "sdk" / "archive" / "research-v1" / "authorship" / "nats-python" / "mappings" / "runtimeconditions.sdk-mapping.yaml"
+NATS_APPS = ROOT / "sdk" / "archive" / "research-v1" / "nats" / "python"
+NATS_PROFILE_RESULTS = ROOT / "sdk" / "archive" / "research-v1" / "authorship" / "nats-python" / "results" / "profiles"
 
 
 def test_authoring_fixtures() -> None:
@@ -324,7 +324,7 @@ async def run() -> None:
         project.mkdir()
         source_path = project / "app.py"
         source_path.write_text(source, encoding="utf-8")
-        discovery = ProjectDiscovery().discover(project, DiscoveryOptions(package_paths=package_paths, discover_installed_sdk_mappings=False))
+        discovery = ProjectDiscovery().discover(project, DiscoveryOptions(package_paths=package_paths, discover_installed_sdk_mappings=True))
         original = discovery.sdk_mappings[0]
         document = copy.deepcopy(original.mapping)
         document["python"]["calls"].append(
@@ -518,7 +518,10 @@ def extract_profile(
             name=name,
             workload_uri=workload_uri,
             workload_version=workload_version,
-            discovery_options=DiscoveryOptions(package_paths=package_paths),
+            discovery_options=DiscoveryOptions(
+                package_paths=package_paths,
+                discover_installed_sdk_mappings=True,
+            ),
         ),
     )
 

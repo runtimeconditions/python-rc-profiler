@@ -47,9 +47,10 @@ def parse_mappings(
             artifact.add("package-manifest", source, f"{item_path} must define function or method")
         target = scalar(item.get("target")) or ""
         kind = scalar(item.get("kind")) or ""
-        if declaration and not kind:
+        writes = parse_writes(item.get("writes"), f"{item_path}.writes", source, artifact)
+        if declaration and not kind and not writes:
             artifact.add("package-manifest", source, f"{item_path}.kind is required")
-        if not declaration and not target:
+        if not declaration and not target and not writes:
             artifact.add("package-manifest", source, f"{item_path}.target is required")
         mappings.append(
             SymbolMapping(
@@ -71,10 +72,38 @@ def parse_mappings(
                     source,
                     artifact,
                 ),
+                writes=writes,
                 options=parse_mappings(item.get("options"), f"{item_path}.options", False, source, artifact),
             )
         )
     return mappings
+
+
+def parse_writes(value: Any, path: str, source: str, artifact: ValidatedArtifact) -> list[dict[str, Any]]:
+    if value is None:
+        return []
+    if not isinstance(value, list) or not value:
+        artifact.add("package-manifest", source, f"{path} must be a non-empty sequence")
+        return []
+    writes: list[dict[str, Any]] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, dict) or not isinstance(item.get("target"), str):
+            artifact.add("package-manifest", source, f"{path}[{index}] requires target")
+            continue
+        sources = [key for key in ("value", "values", "argument") if key in item]
+        if len(sources) != 1:
+            artifact.add("package-manifest", source, f"{path}[{index}] requires exactly one value, values, or argument")
+            continue
+        argument = item.get("argument")
+        if argument is not None and (
+            not isinstance(argument, dict)
+            or not isinstance(argument.get("position"), int)
+            or argument["position"] < 0
+        ):
+            artifact.add("package-manifest", source, f"{path}[{index}].argument.position must be zero or greater")
+            continue
+        writes.append(dict(item))
+    return writes
 
 
 def parse_constants(value: Any, source: str, artifact: ValidatedArtifact) -> dict[str, str]:
@@ -144,4 +173,3 @@ def parse_string_list(value: Any, path: str, source: str, artifact: ValidatedArt
         else:
             result.append(parsed)
     return result
-

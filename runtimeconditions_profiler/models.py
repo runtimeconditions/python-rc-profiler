@@ -28,6 +28,7 @@ class SymbolMapping:
     string_args: dict[str, int] = field(default_factory=dict)
     applies_to_kinds: list[str] = field(default_factory=list)
     applies_to_interface_types: list[str] = field(default_factory=list)
+    writes: list[dict[str, Any]] = field(default_factory=list)
     options: list["SymbolMapping"] = field(default_factory=list)
 
 
@@ -81,7 +82,8 @@ class ValidatedArtifact:
 class DiscoveryOptions:
     package_paths: list[Path] = field(default_factory=list)
     resolve_package_paths: bool = False
-    discover_installed_sdk_mappings: bool = True
+    mapping_paths: list[Path] = field(default_factory=list)
+    extension_paths: list[Path] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
