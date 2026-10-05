@@ -1,82 +1,116 @@
-# Python Profiler
+# Runtime Conditions Python profiler
 
-Runtime Conditions is currently seeking adoption by an established parent
-project. The repositories in this organization are split for hands-on usability,
-review, demos, and implementation feedback. They are not intended to present
-Runtime Conditions as a standalone foundation or competing project.
+The profiler turns declarations in a Python codebase into a validated Runtime
+Conditions Profile. Your code imports **generated binding distributions
+installed in the same Python environment as the profiler**. The profiler
+finds those distributions through Python package metadata, reads their fixed
+binding resources, and analyzes your source without importing the bindings or
+running the application. Python 3.11 or newer is required.
 
-Start here: https://runtimeconditions.github.io/
+## Install from a package index
 
-The Python profiler generates Runtime Conditions Profiles from declarative Python binding packages and version-aligned SDK mappings.
-
-Current implementation:
-
-- Supports Python 3.11 and newer, matching the minimum runtime for generated Python bindings.
-- Uses standard `pyproject.toml` metadata so the profiler can be installed with `pip` or run with `uv`.
-- Resolves imports of generated binding packages through installed distribution metadata and reads their four fixed package resources without importing package code.
-- Discovers Runtime Conditions artifacts from explicit package paths and project-configured package paths:
-  - `runtimeconditions.bindings.yaml`
-  - `runtimeconditions.extension.yaml`
-- Discovers `runtimeconditions/index.yaml` and its digest-pinned SDK mappings from installed Python distributions without importing or executing the SDK.
-- Supports local development override paths through `metadata.extensionDefinition`.
-- Validates discovered artifacts before source extraction:
-  - manifest kind and `metadata.language`
-  - required Python manifest section
-  - manifest extension ID against extension definition `metadata.id`
-  - dependency closure, duplicate extension IDs, cycles, and vocabulary conflicts
-  - binding references to unresolved kinds, interface types, fields, and field values
-  - source class/function existence, string argument indexes, class argument indexes, and constant values
-- Generates Runtime Conditions Profiles from `RuntimeConditionsBinding` declarative Python calls.
-- Resolves direct mapped SDK method calls, the source-verified callable-delegation transformation represented by Kubernetes Python `Watch.stream`, and the first producer/state/method flow represented by Kubernetes Python `DynamicClient`.
-- Resolves a generic SDK-owned state contract for awaited factories, receiver-produced values, inherited or new dependency identities, positional and keyword arguments, typed configuration fields, literal lists, alternative binding sources, and values retained on returned SDK objects. SDK-specific names and semantics remain entirely in generated mapping metadata.
-- Resolves the accepted AWS Python client and resource factories, aliases, generated botocore methods, cross-module application factories, constructor injection, resource relations and actions, owner-qualified calls, and nested s3transfer operation paths.
-- Verifies SDK mapping file and semantic digests, installed distribution identity and version, and exact extension release coordinates before extraction.
-- Validates SDK-derived conditions against the exact extension JSON Schema and emits no inferred condition when a delegated callable, required dynamic coordinate, or state-producing resource selector cannot be resolved statically.
-- Handles ordinary imports, aliased imports, wildcard imports, fully qualified calls, enum-like constants, cross-file string constants, nested option calls, type/class arguments, schema classes in separate files, and unused imported extension packages.
-- Validates generated profiles against the resolved extension dependency closure and vocabulary before output.
-
-Not implemented yet:
-
-- Structural validation and extraction of installed generated extension bindings. Import-to-distribution resolution and fixed-resource loading are implemented.
-- SDK/runtime `RuntimeConditionsPackage` extraction.
-- Automatic retrieval or bundled-catalog resolution of the immutable extension release required by an installed SDK mapping; the current integration receives that exact release through an explicit package path.
-- Additional condition transformations beyond direct calls, higher-order callable delegation, statically cataloged resource flows, and the generic typed-state contract currently exercised by NATS Python.
-- AWS paginator, collection, transfer-class, branch-predicate, and exact execution-path selection patterns not exercised by the seven accepted fixtures.
-
-## Install the CLI
-
-Build the wheel from this repository, then install it in the Python 3.11 or
-newer environment containing the workload's binding distributions. An editable
-install is needed only for development.
+Create an environment for the workload and install the profiler and the
+binding distributions that your code imports. Resolve distributions by package
+name and version from PyPI or your organization's configured Python package
+index. The example names and version below are illustrative:
 
 ```sh
-python3.11 -m pip wheel . --no-deps --wheel-dir dist
-python3.11 -m pip install dist/runtimeconditions_profiler-0.1.0-py3-none-any.whl
+PROFILE_ENV=/Users/alex/.venvs/orders-profile
+PROJECT_DIR=/Users/alex/work/orders
+python3 -m venv "$PROFILE_ENV"
+"$PROFILE_ENV/bin/python" -m pip install \
+  runtimeconditions-profiler==0.1.0 \
+  acme-runtimeconditions-jobs==1.2.3
 ```
 
-The installed command can be invoked from any working directory. Its profile
-generation interface takes the workload directory and identity:
+Keep `PROFILE_ENV` and `PROJECT_DIR` set in the same shell for the commands
+below.
+
+The binding publisher must include Python distribution metadata and these four
+resources at the installed import package's fixed location:
+`runtimeconditions.bindings.yaml`, `runtimeconditions.binding-model.yaml`,
+`runtimeconditions.extension.yaml`, and
+`runtimeconditions.binding-release.yaml`. The profiler verifies their package
+ownership, identities, versions, digests, and dependency closure. Installing
+loose generated `.py` files does not provide that contract.
+
+The Phase 4 fixtures are test-only; the profiler and example binding names in
+this command are not currently public PyPI releases. An end-user release needs
+the publisher to make the profiler and bindings available through a configured
+package index. No `extensions` repository checkout, local binding file path,
+editable install, or checkout-based `PYTHONPATH` is part of this workflow.
+
+## Declare conditions in your workload
+
+Use the API exported by your installed generated binding. For example, an
+organization's jobs binding might provide:
+
+```python
+from acme_runtimeconditions_jobs import Command, Process, job
+
+job(Command(value="sample"), Process())
+```
+
+The exact import, declaration functions, data classes, enum members, and
+fields come from the binding publisher. Declarations may use supported static
+values, collections, maps, optional fields, unions, aliases, and references
+across your project modules. A recognized declaration whose value cannot be
+determined statically produces a source-located error.
+
+## Verify bindings and generate a profile
+
+Run the installed console script from the same environment. The project and
+output paths below are absolute paths to **your workload**, independent of
+where the profiler or binding packages were built:
 
 ```sh
-runtimeconditions-python-profiler profile generate \
-  --project /absolute/path/to/workload \
-  --name my-workload \
-  --workload-uri example/my-workload \
+"$PROFILE_ENV/bin/runtimeconditions-python-profiler" \
+  profile verify-bindings --project "$PROJECT_DIR"
+
+"$PROFILE_ENV/bin/runtimeconditions-python-profiler" \
+  profile generate \
+  --project "$PROJECT_DIR" \
+  --name orders \
+  --workload-uri https://services.example.com/orders \
   --workload-version 1.0.0 \
-  --out /absolute/path/to/profile.yaml
+  --out "$PROJECT_DIR/runtimeconditions.profile.yaml"
 ```
 
-The `profile generate` path now resolves imported binding packages and reads
-their installed resources. It reports an error before writing a profile until
-structural validation and extraction are implemented. For the existing
-handwritten bindings, `generate` retains the development-only `--package-path`
-option.
+`verify-bindings` lists the distributions and extension IDs found through
+workload imports; add `--json` for machine-readable output. `profile generate`
+uses the installed profiler's approved core schema and the verified extension
+definitions from the binding distributions. It validates the complete profile,
+including schemas from transitive dependencies, before atomically writing the
+YAML file. The profile lists extensions that directly contribute declarations;
+validation-only dependencies remain in the checked closure. An error exits
+nonzero and leaves an existing output file untouched. Omit `--out` to print
+the profile to standard output.
 
-## Develop and test
+Use the `profile` subcommands for generated bindings. The older top-level
+`generate`, `discover`, and `mappings` commands belong to a separate legacy
+mapping workflow.
 
-```sh
-python3.11 -m venv .venv
-. .venv/bin/activate
-python -m pip install -e '.[test]'
-python -m pytest
+## Extension IDs and remote resolution
+
+An extension identifier in a production profile has the Section 5.1 form
+`<uri>:<version>`, where `<uri>` is an absolute HTTP or HTTPS URI and the
+version follows the **final colon**. For example:
+
+```yaml
+extensions:
+  - https://extensions.example.com/runtimeconditions/jobs:1.2.3
 ```
+
+The Python distribution name used by `pip` is separate from this extension
+ID. The publisher must make the extension definition for that ID available to
+profile consumers. An Adapter interpreting the generated profile resolves the
+declared IDs and their transitive dependencies through its configured remote
+extension resolver. Section 5.1 defines the identifier syntax; it does not
+specify a network fetch protocol or make the identifier itself a local file
+path.
+
+During **profile generation**, this CLI validates the definitions packaged in
+the installed binding distributions. It does not fetch definitions directly
+from extension URIs. URI-only network resolution without an installed binding
+package is outside the current profiler command. No step requires an end user
+to pull the `extensions` repository or point the profiler at an extension file.

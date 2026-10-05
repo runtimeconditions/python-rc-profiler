@@ -6,7 +6,7 @@ workload:
   uri: example/python-wildcard-cache
   version: test
 extensions:
-- https://runtimeconditions.io/extensions/common-integrations/v1alpha1/runtimeconditions.extension.yaml
+- https://runtimeconditions.io/common-integrations:v1alpha1
 conditions:
 - name: request-cache
   kind: cache

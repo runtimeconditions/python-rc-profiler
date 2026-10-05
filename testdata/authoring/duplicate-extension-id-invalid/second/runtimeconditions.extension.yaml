@@ -1,7 +1,8 @@
 apiVersion: runtimeconditions.io/v1alpha1
 kind: RuntimeConditionsExtensionDefinition
 metadata:
-  id: https://example.com/runtimeconditions/python-fixtures/duplicate/v1alpha1/runtimeconditions.extension.yaml
+  uri: https://example.com/python-fixtures/duplicate
+  version: v1alpha1
 spec:
   kinds:
     - name: second.fixture

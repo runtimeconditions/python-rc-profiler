@@ -1,0 +1,3 @@
+class RuntimeConditionsError(Exception):
+    pass
+

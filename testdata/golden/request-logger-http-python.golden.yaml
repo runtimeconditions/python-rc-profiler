@@ -6,8 +6,8 @@ workload:
   uri: github.com/runtimeconditions/rc-demos/apps/request-logger-http-python
   version: dev
 extensions:
-- https://runtimeconditions.io/extensions/common-integrations/v1alpha1/runtimeconditions.extension.yaml
-- https://runtimeconditions.io/extensions/env-configuration/v1alpha1/runtimeconditions.extension.yaml
+- https://runtimeconditions.io/common-integrations:v1alpha1
+- https://runtimeconditions.io/env-configuration:v1alpha1
 conditions:
 - name: todos-api
   kind: api

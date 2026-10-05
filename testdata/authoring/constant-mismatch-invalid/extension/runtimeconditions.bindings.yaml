@@ -1,7 +1,7 @@
 apiVersion: runtimeconditions.io/v1alpha1
 kind: RuntimeConditionsBinding
 metadata:
-  extension: https://example.com/runtimeconditions/python-fixtures/constant/v1alpha1/runtimeconditions.extension.yaml
+  extension: https://example.com/python-fixtures/constant:v1alpha1
   language: python
 python:
   package: runtimeconditions_fixture

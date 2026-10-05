@@ -1,0 +1,100 @@
+$schema: https://json-schema.org/draft/2020-12/schema
+$id: https://runtimeconditions.io/schemas/profile/0.1.0/runtimeconditions.profile.schema.yaml
+title: Runtime Conditions Profile core schema
+description: >-
+  Core structural rules for Runtime Conditions Profiles, version 0.1.0.
+  Extension-owned vocabulary and applicable extension schemas are validated
+  against the resolved extension closure after this schema succeeds.
+x-runtimeconditions-version: '0.1.0'
+type: object
+additionalProperties: false
+required:
+  - apiVersion
+  - kind
+  - metadata
+  - workload
+  - extensions
+  - conditions
+properties:
+  apiVersion:
+    const: runtimeconditions.io/v1alpha1
+  kind:
+    const: RuntimeConditionsProfile
+  metadata:
+    $ref: '#/$defs/metadata'
+  workload:
+    $ref: '#/$defs/workload'
+  extensions:
+    type: array
+    uniqueItems: true
+    items:
+      $ref: '#/$defs/extensionIdentifier'
+  conditions:
+    type: array
+    items:
+      $ref: '#/$defs/condition'
+allOf:
+  - if:
+      properties:
+        conditions:
+          type: array
+          minItems: 1
+      required: [conditions]
+    then:
+      properties:
+        extensions:
+          minItems: 1
+$defs:
+  nonEmptyString:
+    type: string
+    minLength: 1
+  extensionIdentifier:
+    description: >-
+      An absolute extension URI. The resolver must also verify exact identity,
+      availability, and the transitive dependency closure.
+    type: string
+    minLength: 1
+    pattern: '^[A-Za-z][A-Za-z0-9+.-]*:\S+$'
+    format: uri
+  metadata:
+    type: object
+    additionalProperties: false
+    required: [name]
+    properties:
+      name:
+        $ref: '#/$defs/nonEmptyString'
+      labels:
+        type: object
+        propertyNames:
+          $ref: '#/$defs/nonEmptyString'
+        additionalProperties:
+          type: string
+  workload:
+    type: object
+    additionalProperties: false
+    required: [uri]
+    properties:
+      uri:
+        $ref: '#/$defs/nonEmptyString'
+      version:
+        $ref: '#/$defs/nonEmptyString'
+  condition:
+    type: object
+    required: [kind, interface]
+    properties:
+      name:
+        $ref: '#/$defs/nonEmptyString'
+      optional:
+        type: boolean
+      kind:
+        $ref: '#/$defs/nonEmptyString'
+      interface:
+        $ref: '#/$defs/interface'
+    additionalProperties: true
+  interface:
+    type: object
+    required: [type]
+    properties:
+      type:
+        $ref: '#/$defs/nonEmptyString'
+    additionalProperties: true

@@ -1,7 +1,8 @@
 apiVersion: runtimeconditions.io/v1alpha1
 kind: RuntimeConditionsExtensionDefinition
 metadata:
-  id: https://example.com/runtimeconditions/python-fixtures/transitive-app/v1alpha1/runtimeconditions.extension.yaml
+  uri: https://example.com/python-fixtures/transitive-app
+  version: v1alpha1
 spec:
   dependencies:
-    - https://example.com/runtimeconditions/python-fixtures/transitive-config/v1alpha1/runtimeconditions.extension.yaml
+    - https://example.com/python-fixtures/transitive-config:v1alpha1

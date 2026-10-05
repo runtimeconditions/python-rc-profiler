@@ -27,7 +27,7 @@ runtimeconditions-python-profiler = "runtimeconditions_profiler.cli:main"
 include = ["runtimeconditions_profiler*"]
 
 [tool.setuptools.package-data]
-runtimeconditions_profiler = ["schemas.json", "runtimeconditions.profile.v0.1.0.schema.yaml"]
+runtimeconditions_profiler = ["schemas.json", "runtimeconditions.profile.v0.2.0.schema.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
