@@ -12,6 +12,7 @@ dependencies = [
   "jsonschema>=4.23",
   "packaging>=24.0",
   "PyYAML>=6.0",
+  "referencing>=0.28.4",
   "rfc8785==0.1.4",
 ]
 
@@ -23,8 +24,12 @@ test = [
 [project.scripts]
 runtimeconditions-python-profiler = "runtimeconditions_profiler.cli:main"
 
+[tool.setuptools]
+include-package-data = false
+
 [tool.setuptools.packages.find]
 include = ["runtimeconditions_profiler*"]
+namespaces = false
 
 [tool.setuptools.package-data]
 runtimeconditions_profiler = ["schemas.json", "runtimeconditions.profile.v0.2.0.schema.yaml"]

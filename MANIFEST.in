@@ -1,0 +1,9 @@
+include README.md CONFORMANCE.md
+recursive-include scripts *.py
+recursive-include requirements *.txt
+recursive-include tests *.py
+recursive-include testdata *.py *.yaml *.toml *.md py.typed
+prune archive
+prune build
+prune dist
+global-exclude __pycache__ *.py[cod] .DS_Store

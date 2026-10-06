@@ -1,0 +1,38 @@
+apiVersion: runtimeconditions.io/v1alpha1
+kind: RuntimeConditionsExtensionDefinition
+metadata:
+  uri: https://runtimeconditions.io/conformance/dependency-schema-only-root
+  version: 1.0.0
+spec:
+  dependencies:
+    - https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0
+  kinds:
+    - name: job
+  interfaceTypes:
+    - name: process
+      targetKind: job
+  conditionFields:
+    - name: command
+      appliesToKinds: [job]
+      appliesToInterfaceTypes: [process]
+  schemas:
+    - id: job-process
+      description: Root-owned vocabulary and structure, without a length constraint.
+      appliesToKind: job
+      appliesToInterfaceType: process
+      schema:
+        type: object
+        required: [kind, interface, command]
+        properties:
+          kind:
+            const: job
+          interface:
+            type: object
+            required: [type]
+            properties:
+              type:
+                const: process
+            additionalProperties: false
+          command:
+            type: string
+        additionalProperties: false

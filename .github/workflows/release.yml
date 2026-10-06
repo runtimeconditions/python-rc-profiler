@@ -1,0 +1,178 @@
+name: Tagged Python release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  # Dispatch at a release tag to promote its existing assets after PyPI activation.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: python-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        with:
+          python-version: '3.12'
+      - name: Install release tools
+        run: python -m pip install --disable-pip-version-check -r requirements/release.txt
+      - name: Check tag and package version
+        id: tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python scripts/release_artifacts.py check-tag "$RELEASE_TAG" --github-output "$GITHUB_OUTPUT"
+      - name: Build release distributions once
+        run: python -m build
+      - name: Validate metadata and distribution contents
+        run: |
+          python -m twine check --strict dist/*.whl dist/*.tar.gz
+          mkdir -p release-evidence
+          python scripts/check_distributions.py dist/*.whl dist/*.tar.gz > release-evidence/contents.json
+          python scripts/release_artifacts.py checksums --dist-dir dist
+      - name: Run self-contained regression tests
+        run: |
+          wheel=(dist/*.whl)
+          python -m pip install "${wheel[0]}[test]"
+          # Optional emitter conformance tests require a separate tooling checkout.
+          python -m pytest -q -k 'not when_available and not generated_conformance' tests/test_distribution_contents.py tests/test_extension_identity.py tests/test_generated_binding_extraction.py tests/test_installed_binding_discovery.py tests/test_release_artifacts.py tests/test_release_smoke.py
+      - name: Preserve exact release distributions
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-distributions
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+      - name: Preserve distribution validation evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: distribution-evidence
+          path: release-evidence/
+          if-no-files-found: error
+
+  smoke:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04]
+        python: ['3.11', '3.12', '3.13', '3.14']
+        include:
+          - os: macos-14
+            python: '3.12'
+          - os: windows-2022
+            python: '3.12'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: release-distributions
+          path: dist
+      - name: Install smoke harness dependency
+        run: python -m pip install --disable-pip-version-check PyYAML==6.0.3
+      - name: Install and smoke-check both exact artifacts
+        run: python scripts/smoke_install.py --dist-dir dist --report release-evidence/smoke.json
+      - name: Preserve installed-package evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: smoke-${{ matrix.os }}-python-${{ matrix.python }}
+          path: release-evidence/
+          if-no-files-found: warn
+
+  release:
+    needs: [build, smoke]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        with:
+          name: release-distributions
+          path: dist
+      - name: Attach verified assets and publish the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_COMMIT: ${{ github.sha }}
+          IS_PRERELEASE: ${{ needs.build.outputs.prerelease }}
+        run: |
+          args=()
+          if [[ "$IS_PRERELEASE" == "true" ]]; then
+            args+=(--prerelease)
+          fi
+          python3 scripts/release_artifacts.py publish --dist-dir dist \
+            --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" \
+            --commit "$RELEASE_COMMIT" "${args[@]}"
+
+  pypi:
+    needs: release
+    if: >-
+      ${{ !cancelled() && vars.PYPI_PUBLISH_ENABLED == 'true' &&
+          github.ref_type == 'tag' &&
+          (needs.release.result == 'success' ||
+           (github.event_name == 'workflow_dispatch' && needs.release.result == 'skipped')) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/p/runtimeconditions-profiler
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        with:
+          python-version: '3.12'
+      - name: Install artifact validation dependency
+        run: python -m pip install --disable-pip-version-check packaging==26.3
+      - name: Download and verify the published GitHub Release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: |
+          python scripts/release_artifacts.py prepare-pypi \
+            --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" \
+            --commit "$RELEASE_COMMIT" --dist-dir release-assets \
+            --packages-dir pypi-dist
+      - name: Publish the exact verified distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: pypi-dist/
+          attestations: true
+          print-hash: true

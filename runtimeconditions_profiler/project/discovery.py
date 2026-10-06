@@ -1,13 +1,9 @@
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
 from typing import Optional
-
-try:
-    import tomllib
-except ModuleNotFoundError:  # pragma: no cover - exercised on Python 3.10
-    import tomli as tomllib  # type: ignore[no-redef]
 
 from ..constants import BINDINGS_MANIFEST, EXTENSION_DEFINITION, PACKAGE_MANIFEST
 from ..extension import ArtifactValidator

@@ -1,0 +1,23 @@
+apiVersion: runtimeconditions.io/v1alpha1
+kind: RuntimeConditionsExtensionDefinition
+metadata:
+  uri: https://runtimeconditions.io/conformance/dependency-schema-only-dependency
+  version: 1.0.0
+spec:
+  schemas:
+    - id: command-limit
+      description: Dependency-only validation without vocabulary ownership.
+      schema:
+        type: object
+        $defs:
+          CommandLimit:
+            type: object
+            properties:
+              command:
+                type: string
+                maxLength: 6
+        if:
+          required: [command]
+        then:
+          $ref: '#/$defs/CommandLimit'
+        additionalProperties: true

@@ -1,2 +1,0 @@
-"""Runtime Conditions Python profiler."""
-
