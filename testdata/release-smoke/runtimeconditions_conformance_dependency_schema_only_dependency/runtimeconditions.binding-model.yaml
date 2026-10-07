@@ -5,19 +5,19 @@ metadata:
     name: rc-binding-model
     version: 0.1.0
     sha256: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
-  semanticSha256: 596ad51ab247abcdfe96ba8b81ea6072f0ee61c9da5920e591f99edff6e23cf4
+  semanticSha256: 0a5ae7d130dd5114bcf27607fa30c37ac6a06b40783c9b5892bd1804e32684b6
 coreProfileSchema:
-  id: https://runtimeconditions.io/schemas/profile/0.2.0/runtimeconditions.profile.schema.yaml
-  version: 0.2.0
-  semanticSha256: a090a8016d045f9c3fa872a67f8df293b77ca2809a1bea5ae9fa31a27a06109a
+  id: https://runtimeconditions.io/schemas/profile/0.3.0/runtimeconditions.profile.schema.yaml
+  version: 0.3.0
+  semanticSha256: 83be993b93f81561e405695143f873ef34af65297f32bc2266b6534444da1466
 rootExtension:
   id: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0
   version: 1.0.0
-  semanticSha256: 07fa463ecccf2fddaabfab722b57af3434b25b29320b62426cfccce814140e19
+  semanticSha256: 48a5112f95bb84a54a2d3af1d7fff6d4ad9b76e9193290ec60f55ea742187610
 extensions:
 - id: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0
   version: 1.0.0
-  semanticSha256: 07fa463ecccf2fddaabfab722b57af3434b25b29320b62426cfccce814140e19
+  semanticSha256: 48a5112f95bb84a54a2d3af1d7fff6d4ad9b76e9193290ec60f55ea742187610
 vocabulary:
   owners: []
   ownedDeclarations: []
@@ -53,7 +53,7 @@ schemas:
         $ref: '#/$defs/CommandLimit'
     provenance:
       owner: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0
-      extensionSha256: 07fa463ecccf2fddaabfab722b57af3434b25b29320b62426cfccce814140e19
+      extensionSha256: 48a5112f95bb84a54a2d3af1d7fff6d4ad9b76e9193290ec60f55ea742187610
       coordinate: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0#schema:command-limit
   definitions:
   - name: CommandLimit
@@ -69,25 +69,25 @@ schemas:
             maxLength: 6
           provenance:
             owner: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0
-            extensionSha256: 07fa463ecccf2fddaabfab722b57af3434b25b29320b62426cfccce814140e19
+            extensionSha256: 48a5112f95bb84a54a2d3af1d7fff6d4ad9b76e9193290ec60f55ea742187610
             coordinate: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0#schema:command-limit
             jsonPointer: /$defs/CommandLimit/properties/command
         provenance:
           owner: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0
-          extensionSha256: 07fa463ecccf2fddaabfab722b57af3434b25b29320b62426cfccce814140e19
+          extensionSha256: 48a5112f95bb84a54a2d3af1d7fff6d4ad9b76e9193290ec60f55ea742187610
           coordinate: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0#schema:command-limit
           jsonPointer: /$defs/CommandLimit/properties/command
       provenance:
         owner: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0
-        extensionSha256: 07fa463ecccf2fddaabfab722b57af3434b25b29320b62426cfccce814140e19
+        extensionSha256: 48a5112f95bb84a54a2d3af1d7fff6d4ad9b76e9193290ec60f55ea742187610
         coordinate: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0#schema:command-limit
         jsonPointer: /$defs/CommandLimit
     provenance:
       owner: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0
-      extensionSha256: 07fa463ecccf2fddaabfab722b57af3434b25b29320b62426cfccce814140e19
+      extensionSha256: 48a5112f95bb84a54a2d3af1d7fff6d4ad9b76e9193290ec60f55ea742187610
       coordinate: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0#schema:command-limit
       jsonPointer: /$defs/CommandLimit
   provenance:
     owner: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0
-    extensionSha256: 07fa463ecccf2fddaabfab722b57af3434b25b29320b62426cfccce814140e19
+    extensionSha256: 48a5112f95bb84a54a2d3af1d7fff6d4ad9b76e9193290ec60f55ea742187610
     coordinate: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0#schema:command-limit

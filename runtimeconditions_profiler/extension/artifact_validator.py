@@ -10,7 +10,7 @@ from ..manifest.parser import ManifestParser, require_scalar
 from ..models import ExtensionDefinition, RuntimeConditionsArtifact, ValidatedArtifact
 from ..util import as_map, scalar, uri_to_path
 from ..yamlio import Yaml
-from .identity import definition_identifier, parse_identifier
+from .identity import parse_identifier
 from .definition import dependency_cycle_errors, parse_extension_definition
 from .manifest_validator import ManifestVocabularyValidator
 
@@ -43,16 +43,19 @@ class ArtifactValidator:
                 item.manifest = ManifestParser().parse(section, artifact.manifest_uri, item)
 
             if artifact.kind == "binding":
-                item.manifest_extension_id = require_scalar(item, metadata, artifact.manifest_uri, "metadata.extension")
+                reference = metadata.get("extension")
                 manifest_extension_sha256 = scalar(metadata.get("extensionSha256"))
                 if section is not None:
                     require_scalar(item, section, artifact.manifest_uri, "python.package")
                 override = scalar(metadata.get("extensionDefinition"))
             else:
                 extension = as_map(manifest_doc.get("extension"))
-                item.manifest_extension_id = require_scalar(item, extension, artifact.manifest_uri, "extension.id")
+                reference = extension
                 override = scalar(extension.get("definition"))
-            validate_extension_id(item, item.manifest_extension_id, artifact.manifest_uri)
+            try:
+                item.manifest_extension_id, item.manifest_extension_version = parse_identifier(reference)
+            except Exception as exc:
+                item.add("extension-definition", artifact.manifest_uri, str(exc))
             item.extension_definition_uri = resolve_extension_definition(artifact, override, item)
 
         if item.extension_definition_uri is not None:
@@ -61,7 +64,7 @@ class ArtifactValidator:
                 require_value(item, extension_doc.get("apiVersion"), API_VERSION, item.extension_definition_uri, "apiVersion")
                 require_value(item, extension_doc.get("kind"), EXTENSION_KIND, item.extension_definition_uri, "kind")
                 metadata = as_map(extension_doc.get("metadata"))
-                item.extension_id = definition_identifier(metadata)
+                item.extension_id, item.extension_version = parse_identifier(metadata)
                 extension_digest = scalar(metadata.get("semanticSha256"))
                 if extension_digest:
                     actual_digest = hashlib.sha256(
@@ -84,7 +87,6 @@ class ArtifactValidator:
                             artifact.manifest_uri,
                             f"binding extensionSha256 {manifest_extension_sha256} does not match {extension_digest}",
                         )
-                validate_extension_id(item, item.extension_id, item.extension_definition_uri)
                 if item.extension_id:
                     item.extension_definition = parse_extension_definition(
                         extension_doc,
@@ -95,21 +97,21 @@ class ArtifactValidator:
             except Exception as exc:
                 item.add("extension-definition", item.extension_definition_uri, f"failed to read extension definition: {exc}")
 
-        if item.manifest_extension_id and item.extension_id and item.manifest_extension_id != item.extension_id:
+        if item.manifest_extension_id and item.extension_id and (item.manifest_extension_id, item.manifest_extension_version) != item.reference:
             item.add(
                 "extension-definition",
                 artifact.manifest_uri,
-                f"manifest extension id {item.manifest_extension_id} does not match extension definition {item.extension_id}",
+                f"manifest extension {(item.manifest_extension_id, item.manifest_extension_version)} does not match extension definition {item.reference}",
             )
         return item
 
     def _validate_set(self, artifacts: list[ValidatedArtifact]) -> None:
-        definitions_by_id: dict[str, str] = {}
-        models_by_id: dict[str, ExtensionDefinition] = {}
+        definitions_by_id: dict[tuple[str, str], str] = {}
+        models_by_id: dict[tuple[str, str], ExtensionDefinition] = {}
         for artifact in artifacts:
             if not artifact.extension_id:
                 continue
-            previous = definitions_by_id.setdefault(artifact.extension_id, artifact.extension_definition_uri or "")
+            previous = definitions_by_id.setdefault(artifact.reference, artifact.extension_definition_uri or "")
             if previous != (artifact.extension_definition_uri or ""):
                 artifact.add(
                     "extension-definition",
@@ -117,7 +119,7 @@ class ArtifactValidator:
                     f"duplicate extension id {artifact.extension_id} already defined by {previous}",
                 )
             if artifact.extension_definition is not None:
-                models_by_id.setdefault(artifact.extension_id, artifact.extension_definition)
+                models_by_id.setdefault(artifact.reference, artifact.extension_definition)
 
         for artifact in artifacts:
             for dependency in artifact.dependencies:
@@ -153,15 +155,6 @@ def resolve_extension_definition(
         )
         return None
     return artifact.extension_uri
-
-
-def validate_extension_id(artifact: ValidatedArtifact, value: Optional[str], source: str) -> None:
-    if not value:
-        return
-    try:
-        parse_identifier(value)
-    except Exception as exc:
-        artifact.add("extension-definition", source, str(exc))
 
 
 def require_value(artifact: ValidatedArtifact, actual: Any, expected: str, source: str, field_name: str) -> None:

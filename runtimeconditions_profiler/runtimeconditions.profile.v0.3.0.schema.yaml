@@ -1,11 +1,11 @@
 $schema: https://json-schema.org/draft/2020-12/schema
-$id: https://runtimeconditions.io/schemas/profile/0.2.0/runtimeconditions.profile.schema.yaml
+$id: https://runtimeconditions.io/schemas/profile/0.3.0/runtimeconditions.profile.schema.yaml
 title: Runtime Conditions Profile core schema
 description: >-
-  Core structural rules for Runtime Conditions Profiles, version 0.2.0.
+  Core structural rules for Runtime Conditions Profiles, version 0.3.0.
   Extension-owned vocabulary and applicable extension schemas are validated
   against the resolved extension closure after this schema succeeds.
-x-runtimeconditions-version: '0.2.0'
+x-runtimeconditions-version: '0.3.0'
 type: object
 additionalProperties: false
 required:
@@ -28,7 +28,7 @@ properties:
     type: array
     uniqueItems: true
     items:
-      $ref: '#/$defs/extensionIdentifier'
+      $ref: '#/$defs/extensionReference'
   conditions:
     type: array
     items:
@@ -48,14 +48,19 @@ $defs:
   nonEmptyString:
     type: string
     minLength: 1
-  extensionIdentifier:
+  extensionReference:
     description: >-
-      An absolute extension URI. The resolver must also verify exact identity,
+      An exact extension release. IDs SHOULD use a resolver-supported format,
+      but URI syntax is not required. Resolution verifies both identity fields,
       availability, and the transitive dependency closure.
-    type: string
-    minLength: 1
-    pattern: '^https://[^/?#@\s]+/[^/:?#%\s]+(?:/[^/:?#%\s]+)?:[^/:?#%\s]+$'
-    format: uri
+    type: object
+    additionalProperties: false
+    required: [id, version]
+    properties:
+      id:
+        $ref: '#/$defs/nonEmptyString'
+      version:
+        $ref: '#/$defs/nonEmptyString'
   metadata:
     type: object
     additionalProperties: false
@@ -88,6 +93,8 @@ $defs:
         type: boolean
       kind:
         $ref: '#/$defs/nonEmptyString'
+      extension:
+        $ref: '#/$defs/extensionReference'
       interface:
         $ref: '#/$defs/interface'
     additionalProperties: true

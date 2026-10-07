@@ -1,12 +1,12 @@
 apiVersion: runtimeconditions.io/v1alpha1
 kind: RuntimeConditionsExtensionDefinition
 metadata:
-  uri: https://example.com/python-fixtures/conflict-app
+  id: https://example.com/python-fixtures/conflict-app
   version: v1alpha1
 spec:
   dependencies:
-    - https://example.com/python-fixtures/conflict-alpha:v1alpha1
-    - https://example.com/python-fixtures/conflict-beta:v1alpha1
+    - {id: https://example.com/python-fixtures/conflict-alpha, version: v1alpha1}
+    - {id: https://example.com/python-fixtures/conflict-beta, version: v1alpha1}
   kinds:
     - name: app.fixture
 

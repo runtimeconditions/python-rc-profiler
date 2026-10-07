@@ -1,7 +1,7 @@
 apiVersion: runtimeconditions.io/v1alpha1
 kind: RuntimeConditionsExtensionDefinition
 metadata:
-  uri: https://runtimeconditions.io/conformance/dependency-schema-only-dependency
+  id: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0
   version: 1.0.0
 spec:
   schemas:

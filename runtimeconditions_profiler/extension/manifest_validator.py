@@ -8,10 +8,10 @@ from .vocabulary import ExtensionVocabulary
 
 
 class ManifestVocabularyValidator:
-    def validate(self, artifact: ValidatedArtifact, definitions_by_id: dict[str, ExtensionDefinition]) -> None:
+    def validate(self, artifact: ValidatedArtifact, definitions_by_id: dict[tuple[str, str], ExtensionDefinition]) -> None:
         if artifact.manifest is None or artifact.extension_id is None:
             return
-        vocabulary = ExtensionVocabulary(resolve_definitions(artifact.extension_id, definitions_by_id))
+        vocabulary = ExtensionVocabulary(resolve_definitions(artifact.reference, definitions_by_id))
         for key, count in vocabulary.counts().items():
             if count > 1:
                 artifact.add(

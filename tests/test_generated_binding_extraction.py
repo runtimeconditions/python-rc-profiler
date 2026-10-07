@@ -8,6 +8,7 @@ import pytest
 import yaml
 
 from runtimeconditions_profiler.errors import RuntimeConditionsError
+from runtimeconditions_profiler.extension.identity import parse_identifier
 from runtimeconditions_profiler.profile.generated import GeneratedBindingExtractor
 from runtimeconditions_profiler.project.verify import VerifiedBindingPackage, VerifiedBindingSet
 
@@ -89,7 +90,7 @@ def package(import_name: str = "example_binding", extension: str = "urn:example:
         "sourceName": "service", "function": "service"}] if declarations else [],
         "rootBindings": roots, "types": types}
     installed = SimpleNamespace(import_package=import_name, distribution=import_name, version="1.0.0")
-    return VerifiedBindingPackage(installed, manifest, {"rootExtension": {"id": extension}}, {}, {})
+    return VerifiedBindingPackage(installed, manifest, {"rootExtension": {"id": extension, "version": "1.0.0"}}, {}, {})
 
 
 def extract(tmp_path: Path, source: str, helper: str | None = None,
@@ -122,7 +123,7 @@ def test_extracts_cross_module_objects_collections_maps_union_enum_and_exact_nam
         "interface": {"type": "http", "endpoint-url": "https://example.test", "mode": "rapide"},
         "details": {"tags": ["one", "two"], "data": {"café": ["a", 1, None]}, "choice": 7},
     }
-    assert found[0].direct_extensions == ("urn:example:base",)
+    assert found[0].direct_extensions == (("urn:example:base", "1.0.0"),)
     assert found[0].line == 5
     assert found[0].structural_fallbacks == ()
 
@@ -147,7 +148,7 @@ def test_additive_field_tracks_direct_contributors(tmp_path: Path) -> None:
     assert found[0].condition == {
         "kind": "service", "café": "eu", "extra": "enabled", "interface": {"type": "http"},
     }
-    assert found[0].direct_extensions == ("urn:example:addon", "urn:example:base")
+    assert found[0].direct_extensions == (("urn:example:addon", "1.0.0"), ("urn:example:base", "1.0.0"))
 
 
 @pytest.mark.parametrize(
@@ -279,7 +280,7 @@ def test_generated_conformance_sources_extract_in_memory_when_available(
     package = VerifiedBindingPackage(installed, manifest, model, {}, {})
     found = GeneratedBindingExtractor(VerifiedBindingSet((package,), (package,))).extract(tmp_path)
     assert len(found) == count
-    assert all(item.direct_extensions == (model["rootExtension"]["id"],) for item in found)
+    assert all(item.direct_extensions == (parse_identifier(model["rootExtension"]),) for item in found)
     assert all(item.condition["kind"] for item in found)
     if case == "11-source-name-preservation":
         assert "café" in found[0].condition

@@ -1,11 +1,11 @@
 apiVersion: runtimeconditions.io/v1alpha1
 kind: RuntimeConditionsExtensionDefinition
 metadata:
-  uri: https://example.com/python-fixtures/overlap-app
+  id: https://example.com/python-fixtures/overlap-app
   version: v1alpha1
 spec:
   dependencies:
-    - https://example.com/python-fixtures/overlap-base:v1alpha1
-    - https://example.com/python-fixtures/overlap-field-a:v1alpha1
-    - https://example.com/python-fixtures/overlap-field-b:v1alpha1
+    - {id: https://example.com/python-fixtures/overlap-base, version: v1alpha1}
+    - {id: https://example.com/python-fixtures/overlap-field-a, version: v1alpha1}
+    - {id: https://example.com/python-fixtures/overlap-field-b, version: v1alpha1}
 

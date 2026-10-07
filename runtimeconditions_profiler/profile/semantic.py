@@ -21,15 +21,16 @@ from referencing.jsonschema import DRAFT202012
 
 from ..constants import API_VERSION
 from ..errors import RuntimeConditionsError
+from ..extension.identity import parse_identifier, reference_object
 from ..project.verify import VerifiedBindingPackage, VerifiedBindingSet
 from .generated import ExtractedCondition
 
 
-CORE_RESOURCE = "runtimeconditions.profile.v0.2.0.schema.yaml"
-CORE_ID = "https://runtimeconditions.io/schemas/profile/0.2.0/runtimeconditions.profile.schema.yaml"
-CORE_VERSION = "0.2.0"
-CORE_SEMANTIC_SHA256 = "a090a8016d045f9c3fa872a67f8df293b77ca2809a1bea5ae9fa31a27a06109a"
-CORE_SOURCE_SHA256 = "342bf20bce479f5012b9fc2c6238dc1fb0935e327ecb0fbca6e647362563c73c"
+CORE_RESOURCE = "runtimeconditions.profile.v0.3.0.schema.yaml"
+CORE_ID = "https://runtimeconditions.io/schemas/profile/0.3.0/runtimeconditions.profile.schema.yaml"
+CORE_VERSION = "0.3.0"
+CORE_SEMANTIC_SHA256 = "83be993b93f81561e405695143f873ef34af65297f32bc2266b6534444da1466"
+CORE_SOURCE_SHA256 = "9f09d24054919e992f9c209cbd8098e2f0de382132fb06dbc3207e4e12c60e35"
 CORE_FIELDS = frozenset({"kind", "interface", "name", "optional"})
 
 
@@ -86,7 +87,7 @@ def _path_values(value: Any, path: str) -> list[Any]:
 class GeneratedProfileValidator:
     def __init__(self, verified: VerifiedBindingSet) -> None:
         self.verified = verified
-        self.by_id: dict[str, VerifiedBindingPackage] = {}
+        self.by_id: dict[tuple[str, str], VerifiedBindingPackage] = {}
         expected_core = {
             "id": CORE_ID, "version": CORE_VERSION,
             "semanticSha256": CORE_SEMANTIC_SHA256,
@@ -96,7 +97,7 @@ class GeneratedProfileValidator:
             name = package.installed.distribution
             if package.model["coreProfileSchema"] != expected_core:
                 _fail(name, "binding model core profile schema identity or digest mismatch")
-            extension_id = package.model["rootExtension"]["id"]
+            extension_id = parse_identifier(package.model["rootExtension"])
             if extension_id in self.by_id:
                 _fail(name, f"duplicate installed extension {extension_id}")
             self.by_id[extension_id] = package
@@ -111,18 +112,18 @@ class GeneratedProfileValidator:
             "kind": "RuntimeConditionsProfile",
             "metadata": {"name": name},
             "workload": {"uri": workload_uri, "version": workload_version},
-            "extensions": sorted(direct),
+            "extensions": [reference_object(ref) for ref in sorted(direct)],
             "conditions": [item.condition for item in extracted],
         }
         self._validate_core(profile, extracted)
         closure = self._closure(direct)
-        added: set[str] = set()
+        added: set[tuple[str, str]] = set()
         for index, item in enumerate(extracted):
             added.update(self._validate_vocabulary(item, index, closure))
         direct.update(added)
         closure = self._closure(direct)
         self._validate_model_closures(direct, closure)
-        profile["extensions"] = sorted(direct)
+        profile["extensions"] = [reference_object(ref) for ref in sorted(direct)]
         self._validate_core(profile, extracted)
         self._validate_extension_schemas(extracted, closure)
         for index, item in enumerate(extracted):
@@ -133,11 +134,11 @@ class GeneratedProfileValidator:
                 )
         return profile
 
-    def _closure(self, direct: set[str]) -> dict[str, VerifiedBindingPackage]:
-        found: dict[str, VerifiedBindingPackage] = {}
-        visiting: set[str] = set()
+    def _closure(self, direct: set[tuple[str, str]]) -> dict[tuple[str, str], VerifiedBindingPackage]:
+        found: dict[tuple[str, str], VerifiedBindingPackage] = {}
+        visiting: set[tuple[str, str]] = set()
 
-        def visit(extension_id: str) -> None:
+        def visit(extension_id: tuple[str, str]) -> None:
             if extension_id in visiting:
                 _fail(extension_id, "extension dependency cycle")
             if extension_id in found:
@@ -146,7 +147,7 @@ class GeneratedProfileValidator:
             if package is None:
                 _fail(extension_id, "extension has no verified installed binding package")
             visiting.add(extension_id)
-            for dependency in sorted(package.extension["spec"].get("dependencies", [])):
+            for dependency in sorted(parse_identifier(dep) for dep in package.extension["spec"].get("dependencies", [])):
                 visit(dependency)
             visiting.remove(extension_id)
             found[extension_id] = package
@@ -156,17 +157,17 @@ class GeneratedProfileValidator:
         return found
 
     def _validate_model_closures(
-        self, direct: set[str], closure: dict[str, VerifiedBindingPackage],
+        self, direct: set[tuple[str, str]], closure: dict[tuple[str, str], VerifiedBindingPackage],
     ) -> None:
         for extension_id in sorted(direct):
             package = closure[extension_id]
             expected = set(self._closure({extension_id}))
             model = package.model["extensions"]
-            actual = {item["id"] for item in model}
+            actual = {parse_identifier(item) for item in model}
             if len(actual) != len(model) or actual != expected:
                 _fail(extension_id, "binding model extension closure differs from installed dependency graph")
             for item in model:
-                owner = self.by_id[item["id"]]
+                owner = self.by_id[parse_identifier(item)]
                 identity = owner.model["rootExtension"]
                 if any(item.get(key) != identity.get(key) for key in ("version", "semanticSha256")):
                     _fail(extension_id, f"extension identity mismatch for {item['id']}")
@@ -194,12 +195,12 @@ class GeneratedProfileValidator:
 
     @staticmethod
     def _matching_schemas(
-        condition: dict[str, Any], closure: dict[str, VerifiedBindingPackage],
-    ) -> list[tuple[str, str, dict[str, Any]]]:
+        condition: dict[str, Any], closure: dict[tuple[str, str], VerifiedBindingPackage],
+    ) -> list[tuple[tuple[str, str], str, dict[str, Any]]]:
         kind = condition.get("kind")
         interface = condition.get("interface")
         interface_type = interface.get("type") if isinstance(interface, dict) else None
-        matched: list[tuple[str, str, dict[str, Any]]] = []
+        matched: list[tuple[tuple[str, str], str, dict[str, Any]]] = []
         for owner in sorted(closure):
             for item in closure[owner].extension["spec"].get("schemas", []):
                 if item.get("appliesToKind") not in (None, kind):
@@ -211,8 +212,8 @@ class GeneratedProfileValidator:
 
     def _validate_vocabulary(
         self, item: ExtractedCondition, index: int,
-        closure: dict[str, VerifiedBindingPackage],
-    ) -> set[str]:
+        closure: dict[tuple[str, str], VerifiedBindingPackage],
+    ) -> set[tuple[str, str]]:
         condition = item.condition
         kind = condition.get("kind")
         interface = condition.get("interface")
@@ -237,8 +238,8 @@ class GeneratedProfileValidator:
         contributors.update(interface_owners)
         schemas = self._matching_schemas(condition, closure)
 
-        def manifest_owners(path: tuple[str, ...]) -> set[str]:
-            owners: set[str] = set()
+        def manifest_owners(path: tuple[str, ...]) -> set[tuple[str, str]]:
+            owners: set[tuple[str, str]] = set()
             for owner, package in closure.items():
                 types = {entry["nativeName"]: entry for entry in package.manifest["types"]}
                 for binding in package.manifest["rootBindings"]:
@@ -256,8 +257,8 @@ class GeneratedProfileValidator:
                             owners.add(owner)
             return owners
 
-        def schema_owners(path: tuple[str, ...]) -> set[str]:
-            owners: set[str] = set()
+        def schema_owners(path: tuple[str, ...]) -> set[tuple[str, str]]:
+            owners: set[tuple[str, str]] = set()
             for owner, _, schema in schemas:
                 current: Any = schema
                 for name in path:
@@ -327,7 +328,7 @@ class GeneratedProfileValidator:
 
     def _validate_extension_schemas(
         self, extracted: tuple[ExtractedCondition, ...],
-        closure: dict[str, VerifiedBindingPackage],
+        closure: dict[tuple[str, str], VerifiedBindingPackage],
     ) -> None:
         schema_items = [
             (owner, item["id"], item["schema"])

@@ -12,7 +12,7 @@ from jsonschema import Draft202012Validator
 
 from ..constants import EXTENSION_KIND, SDK_MAPPING_API_VERSION, SDK_MAPPING_KIND
 from ..errors import RuntimeConditionsError
-from ..extension.identity import definition_identifier
+from ..extension.identity import definition_identifier, parse_identifier
 from ..extension.definition import parse_extension_definition
 from ..models import Diagnostic, SDKExtensionArtifact, SDKMappingArtifact
 from ..source.python import expression_name
@@ -61,7 +61,7 @@ def load_explicit_sdk_artifacts(
             version = metadata.get("version")
             digest = metadata.get("semanticSha256")
             if not all(isinstance(item, str) and item for item in (extension_id, version, digest)):
-                raise RuntimeConditionsError("extension metadata requires uri, version, and semanticSha256")
+                raise RuntimeConditionsError("extension metadata requires id, version, and semanticSha256")
             actual = _semantic_sha256(document.get("spec", {}))
             if actual != digest:
                 raise RuntimeConditionsError(f"extension semantic digest is {actual}, not {digest}")
@@ -77,9 +77,9 @@ def load_explicit_sdk_artifacts(
             )
         except Exception as exc:
             diagnostics.append(Diagnostic("error", "sdk-extension", str(path), str(exc)))
-    extension_ids = {item.id for item in extensions}
+    extension_ids = {(item.id, item.version) for item in extensions}
     for mapping in mappings:
-        extension_id = mapping.mapping["extension"]["id"]
+        extension_id = parse_identifier(mapping.mapping["extension"])
         if extension_id not in extension_ids:
             diagnostics.append(
                 Diagnostic(
@@ -103,8 +103,7 @@ def _validate_mapping_shape(document: dict[str, Any], path: Path) -> None:
         raise RuntimeConditionsError("mapping metadata requires name and version")
     if not isinstance(sdk, dict) or sdk.get("language") != "python" or not all(isinstance(sdk.get(key), str) and sdk[key] for key in ("ecosystem", "package")):
         raise RuntimeConditionsError("mapping requires a Python SDK ecosystem and package")
-    if not isinstance(extension, dict) or not isinstance(extension.get("id"), str):
-        raise RuntimeConditionsError("mapping requires one extension id")
+    parse_identifier(extension)
     if not isinstance(rules, list) or not rules:
         raise RuntimeConditionsError("mapping requires at least one rule")
     rule_ids: set[str] = set()
@@ -157,7 +156,7 @@ UNKNOWN = Evidence("unknown")
 
 @dataclass
 class ConditionResult:
-    extension_id: str
+    extension_id: tuple[str, str]
     identity: str
     document: dict[str, Any]
 
@@ -165,11 +164,11 @@ class ConditionResult:
 class DirectSDKPythonExtractor:
     def __init__(self, mappings: list[SDKMappingArtifact], extensions: list[SDKExtensionArtifact]) -> None:
         self.mappings = [item for item in mappings if isinstance(item.mapping.get("sdk"), dict)]
-        self.extensions = {item.id: item for item in extensions}
+        self.extensions = {(item.id, item.version): item for item in extensions}
         self.call_rules: list[tuple[SDKMappingArtifact, dict[str, Any]]] = []
         self.method_rules: dict[tuple[str, str], tuple[SDKMappingArtifact, dict[str, Any]]] = {}
         for artifact in self.mappings:
-            extension_id = artifact.mapping["extension"]["id"]
+            extension_id = parse_identifier(artifact.mapping["extension"])
             extension = self.extensions.get(extension_id)
             if extension is None:
                 raise RuntimeConditionsError(f"{artifact.name}: extension {extension_id} is unavailable")
@@ -185,7 +184,7 @@ class DirectSDKPythonExtractor:
                         raise RuntimeConditionsError(f"ambiguous SDK method rule for {key[0]}.{key[1]}")
                     self.method_rules[key] = (artifact, rule)
 
-    def extract(self, source_files: list[Path], project_root: Path) -> tuple[list[dict[str, Any]], list[str]]:
+    def extract(self, source_files: list[Path], project_root: Path) -> tuple[list[dict[str, Any]], list[tuple[str, str]]]:
         results: list[ConditionResult] = []
         for source in source_files:
             tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
@@ -256,7 +255,7 @@ class DirectSDKPythonExtractor:
             else:
                 _write_target(document, write["target"], written)
         result_identity = identity.key if identity is not None else location
-        return UNKNOWN, [ConditionResult(artifact.mapping["extension"]["id"], result_identity, document)]
+        return UNKNOWN, [ConditionResult(parse_identifier(artifact.mapping["extension"]), result_identity, document)]
 
     def _write_value(
         self,

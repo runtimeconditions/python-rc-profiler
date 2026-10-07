@@ -6,8 +6,10 @@ workload:
   uri: example/python-declarative-app
   version: test
 extensions:
-- https://runtimeconditions.io/common-integrations:v1alpha1
-- https://runtimeconditions.io/env-configuration:v1alpha1
+- id: https://runtimeconditions.io/common-integrations
+  version: v1alpha1
+- id: https://runtimeconditions.io/env-configuration
+  version: v1alpha1
 conditions:
 - name: todos-api
   kind: api

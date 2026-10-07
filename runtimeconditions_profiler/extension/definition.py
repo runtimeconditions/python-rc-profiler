@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..models import ExtensionDefinition
+from .identity import parse_identifier
 from ..util import as_list, as_map, parse_plain_string_list, scalar
 
 
@@ -40,8 +41,9 @@ def parse_extension_definition(doc: dict[str, Any], extension_id: str, uri: str)
     ]
     return ExtensionDefinition(
         id=extension_id,
+        version=parse_identifier(as_map(doc.get("metadata")))[1],
         uri=uri,
-        dependencies=parse_plain_string_list(spec.get("dependencies")),
+        dependencies=[parse_identifier(item) for item in as_list(spec.get("dependencies"))],
         kinds=[item for item in kinds if item],
         interface_types=[item for item in interface_types if item[0] and item[1]],
         interface_fields=[item for item in interface_fields if item[0] and item[1] and item[2]],
@@ -50,11 +52,11 @@ def parse_extension_definition(doc: dict[str, Any], extension_id: str, uri: str)
     )
 
 
-def resolve_definitions(extension_id: str, definitions_by_id: dict[str, ExtensionDefinition]) -> list[ExtensionDefinition]:
+def resolve_definitions(extension_id: tuple[str, str], definitions_by_id: dict[tuple[str, str], ExtensionDefinition]) -> list[ExtensionDefinition]:
     resolved: list[ExtensionDefinition] = []
-    seen: set[str] = set()
+    seen: set[tuple[str, str]] = set()
 
-    def visit(current: str) -> None:
+    def visit(current: tuple[str, str]) -> None:
         if current in seen:
             return
         seen.add(current)
@@ -69,12 +71,12 @@ def resolve_definitions(extension_id: str, definitions_by_id: dict[str, Extensio
     return resolved
 
 
-def dependency_cycle_errors(definitions_by_id: dict[str, ExtensionDefinition]) -> list[str]:
+def dependency_cycle_errors(definitions_by_id: dict[tuple[str, str], ExtensionDefinition]) -> list[str]:
     errors: list[str] = []
-    visiting: set[str] = set()
-    visited: set[str] = set()
+    visiting: set[tuple[str, str]] = set()
+    visited: set[tuple[str, str]] = set()
 
-    def visit(extension_id: str) -> None:
+    def visit(extension_id: tuple[str, str]) -> None:
         if extension_id in visited:
             return
         if extension_id in visiting:

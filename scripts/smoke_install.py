@@ -25,7 +25,7 @@ else:
     from release_artifacts import sha256, verify_checksums
 
 
-RESOURCES = ("schemas.json", "runtimeconditions.profile.v0.2.0.schema.yaml")
+RESOURCES = ("schemas.json", "runtimeconditions.profile.v0.3.0.schema.yaml")
 ROOT_ID = "https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0"
 DEPENDENCY_ID = "https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0"
 PACKAGE_PREFIX = "runtimeconditions_conformance_dependency_schema_only_"
@@ -75,7 +75,7 @@ def binding_wheels(fixtures: Path, output: Path, profiler: Path, version: str) -
         files = {path.name: path.read_bytes() for path in directory.iterdir() if path.is_file()}
         manifest = yaml.safe_load(files["runtimeconditions.bindings.yaml"])
         model = yaml.safe_load(files["runtimeconditions.binding-model.yaml"])
-        packages[model["rootExtension"]["id"]] = {
+        packages[(model["rootExtension"]["id"], model["rootExtension"]["version"])] = {
             "role": role, "files": files, "model": model, "package": manifest["package"],
         }
     built = {}
@@ -83,14 +83,15 @@ def binding_wheels(fixtures: Path, output: Path, profiler: Path, version: str) -
         model = item["model"]
         dependencies = []
         requirements = []
-        root_entry = next(entry for entry in model["extensions"] if entry["id"] == identity)
+        root_entry = next(entry for entry in model["extensions"] if (entry["id"], entry["version"]) == identity)
         for dependency in root_entry.get("dependencies", []):
-            package = packages[dependency]["package"]
+            dependency_key = (dependency["id"], dependency["version"])
+            package = packages[dependency_key]["package"]
             dependencies.append({
                 "extension": dependency, "coordinate": package["coordinate"], "name": package["name"],
                 "testedVersion": "1.0.0",
                 "compatibleVersionRange": {"minimumInclusive": "1.0.0", "nextBreakingExclusive": "2.0.0"},
-                "artifact": {"kind": "python-wheel", "sha256": sha256(built[dependency])},
+                "artifact": {"kind": "python-wheel", "sha256": sha256(built[dependency_key])},
             })
             requirements.append(f"{package['coordinate']}>=1.0.0,<2.0.0")
         release = {
@@ -101,7 +102,7 @@ def binding_wheels(fixtures: Path, output: Path, profiler: Path, version: str) -
             "dependencyLock": {"extensions": [
                 {
                     **entry,
-                    "sourceSha256": hashlib.sha256(packages[entry["id"]]["files"]["runtimeconditions.extension.yaml"]).hexdigest(),
+                    "sourceSha256": hashlib.sha256(packages[(entry["id"], entry["version"])]["files"]["runtimeconditions.extension.yaml"]).hexdigest(),
                     "sourceBackend": "package", "sourceLocator": f"release-smoke:{entry['id']}",
                 }
                 for entry in model["extensions"]
@@ -127,13 +128,13 @@ from runtimeconditions_profiler.project.verify import _schemas
 from runtimeconditions_profiler.profile.semantic import _core_schema
 if not Path(runtimeconditions_profiler.__file__).is_relative_to(Path(sys.prefix)):
     raise RuntimeError("profiler did not load from the clean environment")
-if len(_schemas()) != 4 or _core_schema()["x-runtimeconditions-version"] != "0.2.0":
+if len(_schemas()) != 4 or _core_schema()["x-runtimeconditions-version"] != "0.3.0":
     raise RuntimeError("installed schema resources are invalid")
 print(json.dumps({
     "version": metadata.version("runtimeconditions-profiler"),
     "resources": {
         name: hashlib.sha256(resources.files("runtimeconditions_profiler").joinpath(name).read_bytes()).hexdigest()
-        for name in ("schemas.json", "runtimeconditions.profile.v0.2.0.schema.yaml")
+        for name in ("schemas.json", "runtimeconditions.profile.v0.3.0.schema.yaml")
     },
 }))
 '''
@@ -192,7 +193,7 @@ def smoke(directory: Path, fixtures: Path, report: Path, expected_version: str |
                 "raise RuntimeError('release smoke workload must not execute')\n", encoding="utf-8",
             )
             verified = json.loads(run([cli, "profile", "verify-bindings", "--project", project, "--json"], project, environment, log).stdout)
-            if {(item["extensionId"], item["version"]) for item in verified["packages"]} != {(ROOT_ID, "1.0.0"), (DEPENDENCY_ID, "1.0.0")}:
+            if {(item["extensionId"], item["extensionVersion"]) for item in verified["packages"]} != {(ROOT_ID, "1.0.0"), (DEPENDENCY_ID, "1.0.0")}:
                 raise ValueError(f"{kind}: incorrect binding identities, versions, or dependency closure")
             output = project / "profile.yaml"
             command = [cli, "profile", "generate", "--project", project, "--name", "release-smoke",
@@ -200,7 +201,7 @@ def smoke(directory: Path, fixtures: Path, report: Path, expected_version: str |
             run(command, project, environment, log)
             expected = {
                 "apiVersion": "runtimeconditions.io/v1alpha1", "kind": "RuntimeConditionsProfile", "metadata": {"name": "release-smoke"},
-                "workload": {"uri": "https://example.test/workload", "version": "1.0.0"}, "extensions": [ROOT_ID],
+                "workload": {"uri": "https://example.test/workload", "version": "1.0.0"}, "extensions": [{"id": ROOT_ID, "version": "1.0.0"}],
                 "conditions": [{"kind": "job", "interface": {"type": "process"}, "command": "sample"}],
             }
             if yaml.safe_load(output.read_bytes()) != expected:
@@ -208,7 +209,7 @@ def smoke(directory: Path, fixtures: Path, report: Path, expected_version: str |
             original = output.read_bytes()
             app.write_text(app.read_text(encoding="utf-8").replace("'sample'", "'too-long'"), encoding="utf-8")
             rejected = run(command, project, environment, log, expected=1)
-            if f"{DEPENDENCY_ID}/command-limit" not in rejected.stderr or output.read_bytes() != original:
+            if f"{(DEPENDENCY_ID, '1.0.0')}/command-limit" not in rejected.stderr or output.read_bytes() != original:
                 raise ValueError(f"{kind}: dependency schema rejection or output preservation failed")
             runs.append({"kind": kind, "artifact": artifact.name, "sha256": sha256(artifact), "status": "passed",
                          "resources": resources, "verifiedClosure": sorted([ROOT_ID, DEPENDENCY_ID]),

@@ -257,6 +257,7 @@ def run_profile_verify_bindings(args: argparse.Namespace) -> int:
             "version": item.installed.version,
             "importPackage": item.installed.import_package,
             "extensionId": item.model["rootExtension"]["id"],
+            "extensionVersion": item.model["rootExtension"]["version"],
             "modelSha256": item.model["metadata"]["semanticSha256"],
         }
         for item in verified.packages

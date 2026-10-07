@@ -29,7 +29,7 @@ from packaging.utils import canonicalize_name
 from packaging.version import InvalidVersion, Version
 
 from ..errors import RuntimeConditionsError
-from ..extension.identity import definition_identifier
+from ..extension.identity import definition_identifier, parse_identifier
 from .installed import (
     MAX_RESOURCE_BYTES,
     RESOURCE_NAMES,
@@ -349,7 +349,7 @@ def _verify_imports(discovery: InstalledBindingDiscoveryResult, verified: dict[s
         for contract in manifest["importedMarkerContracts"]:
             exports.add(contract["markerInterface"])
             _, declaration = resolve_marker_declaration(
-                contract, verified.values(), {item["id"] for item in verified[canonicalize_name(imported.package.distribution)].model["extensions"]},
+                contract, verified.values(), {parse_identifier(item) for item in verified[canonicalize_name(imported.package.distribution)].model["extensions"]},
             )
             exports.add(declaration["function"])
         if source.symbol not in exports:
@@ -357,7 +357,7 @@ def _verify_imports(discovery: InstalledBindingDiscoveryResult, verified: dict[s
 
 
 def resolve_marker_declaration(
-    contract: dict[str, Any], packages: Iterable[VerifiedBindingPackage], allowed_extensions: set[str],
+    contract: dict[str, Any], packages: Iterable[VerifiedBindingPackage], allowed_extensions: set[tuple[str, str]],
 ) -> tuple[VerifiedBindingPackage, dict[str, Any]]:
     """Follow verified package re-exports to the declaration that owns a marker."""
     installed = tuple(packages)
@@ -371,7 +371,7 @@ def resolve_marker_declaration(
     while provider_name not in visited:
         visited.add(provider_name)
         provider = by_import.get(provider_name)
-        if provider is None or provider.model["rootExtension"]["id"] not in allowed_extensions:
+        if provider is None or parse_identifier(provider.model["rootExtension"]) not in allowed_extensions:
             raise RuntimeConditionsError(f"imported marker provider {provider_name} is outside the verified extension closure")
         declarations = [
             item for item in provider.manifest["declarations"]
@@ -465,10 +465,8 @@ class InstalledBindingVerifier:
             semantic_extension = _semantic_value(extension, schemas[SCHEMAS["runtimeconditions.extension.yaml"]], schemas[SCHEMAS["runtimeconditions.extension.yaml"]])
             extension_digest = _canonical_sha256(semantic_extension)
             root = model["rootExtension"]
-            actual_extension = {"id": definition_identifier(extension["metadata"]), "semanticSha256": extension_digest}
-            if "version" in extension["metadata"]:
-                actual_extension["version"] = extension["metadata"]["version"]
-            if root != actual_extension or manifest["extension"] != {"id": root["id"], "semanticSha256": root["semanticSha256"]} or release["rootExtension"] != root:
+            actual_extension = {"id": definition_identifier(extension["metadata"]), "version": extension["metadata"]["version"], "semanticSha256": extension_digest}
+            if root != actual_extension or manifest["extension"] != root or release["rootExtension"] != root:
                 raise RuntimeConditionsError(f"{package.distribution}: root extension identity or digest mismatch")
             _verify_manifest_edges(manifest, model, package.distribution)
             verified[key] = VerifiedBindingPackage(package, manifest, model, extension, release)
@@ -477,9 +475,9 @@ class InstalledBindingVerifier:
                 if dep_key not in verified and all(canonicalize_name(item.distribution) != dep_key for item in pending):
                     pending.append(_load_dependency(dependency["coordinate"], dependency["name"]))
 
-        by_extension: dict[str, VerifiedBindingPackage] = {}
+        by_extension: dict[tuple[str, str], VerifiedBindingPackage] = {}
         for package in verified.values():
-            extension_id = package.model["rootExtension"]["id"]
+            extension_id = parse_identifier(package.model["rootExtension"])
             if extension_id in by_extension:
                 raise RuntimeConditionsError(f"duplicate installed binding extension {extension_id}")
             by_extension[extension_id] = package
@@ -494,29 +492,29 @@ class InstalledBindingVerifier:
 def _verify_closure(
     package: VerifiedBindingPackage,
     all_packages: dict[str, VerifiedBindingPackage],
-    by_extension: dict[str, VerifiedBindingPackage],
+    by_extension: dict[tuple[str, str], VerifiedBindingPackage],
 ) -> None:
     name = package.installed.distribution
     model_entries = package.model["extensions"]
     lock_entries = package.release["dependencyLock"]["extensions"]
-    models = {entry["id"]: entry for entry in model_entries}
-    locks = {entry["id"]: entry for entry in lock_entries}
+    models = {parse_identifier(entry): entry for entry in model_entries}
+    locks = {parse_identifier(entry): entry for entry in lock_entries}
     if len(models) != len(model_entries) or len(locks) != len(lock_entries) or set(models) != set(locks):
         raise RuntimeConditionsError(f"{name}: dependency lock does not match model closure")
-    root_id = package.model["rootExtension"]["id"]
+    root_id = parse_identifier(package.model["rootExtension"])
     if root_id not in models or {
         key: value for key, value in models[root_id].items() if key != "dependencies"
     } != package.model["rootExtension"]:
         raise RuntimeConditionsError(f"{name}: model root is absent from extension closure")
-    edges = {(entry["from"], entry["to"]) for entry in package.model.get("dependencyEdges", [])}
-    derived_edges = {(entry["id"], dep) for entry in model_entries for dep in entry.get("dependencies", [])}
+    edges = {(parse_identifier(entry["from"]), parse_identifier(entry["to"])) for entry in package.model.get("dependencyEdges", [])}
+    derived_edges = {(parse_identifier(entry), parse_identifier(dep)) for entry in model_entries for dep in entry.get("dependencies", [])}
     if len(edges) != len(package.model.get("dependencyEdges", [])) or edges != derived_edges:
         raise RuntimeConditionsError(f"{name}: model dependency edges do not match extension closure")
     for entry in model_entries:
-        dependencies = entry.get("dependencies", [])
+        dependencies = [parse_identifier(dep) for dep in entry.get("dependencies", [])]
         if len(set(dependencies)) != len(dependencies):
             raise RuntimeConditionsError(f"{name}: duplicate extension dependency for {entry['id']}")
-    reachable: set[str] = set()
+    reachable: set[tuple[str, str]] = set()
     pending = [root_id]
     while pending:
         extension_id = pending.pop()
@@ -525,7 +523,7 @@ def _verify_closure(
         if extension_id not in models:
             raise RuntimeConditionsError(f"{name}: unresolved model dependency {extension_id}")
         reachable.add(extension_id)
-        pending.extend(models[extension_id].get("dependencies", []))
+        pending.extend(parse_identifier(dep) for dep in models[extension_id].get("dependencies", []))
     if reachable != set(models):
         raise RuntimeConditionsError(f"{name}: model closure has extensions unreachable from its root")
     for extension_id, entry in models.items():
@@ -536,9 +534,9 @@ def _verify_closure(
         expected = owner.model["rootExtension"]
         if entry["semanticSha256"] != expected["semanticSha256"] or entry.get("version") != expected.get("version"):
             raise RuntimeConditionsError(f"{name}: extension closure identity mismatch for {extension_id}")
-        if set(entry.get("dependencies", [])) != set(owner.extension["spec"].get("dependencies", [])):
+        if {parse_identifier(dep) for dep in entry.get("dependencies", [])} != {parse_identifier(dep) for dep in owner.extension["spec"].get("dependencies", [])}:
             raise RuntimeConditionsError(f"{name}: extension closure edges differ from packaged definition for {extension_id}")
-        if lock["semanticSha256"] != entry["semanticSha256"] or lock.get("version") != entry.get("version") or set(lock.get("dependencies", [])) != set(entry.get("dependencies", [])):
+        if lock["semanticSha256"] != entry["semanticSha256"] or lock.get("version") != entry.get("version") or {parse_identifier(dep) for dep in lock.get("dependencies", [])} != {parse_identifier(dep) for dep in entry.get("dependencies", [])}:
             raise RuntimeConditionsError(f"{name}: dependency lock identity or edges mismatch for {extension_id}")
         if lock["sourceSha256"] != _sha256(owner.installed.resources["runtimeconditions.extension.yaml"]):
             raise RuntimeConditionsError(f"{name}: dependency lock source digest mismatch for {extension_id}")
@@ -548,10 +546,10 @@ def _verify_closure(
     # At profile time, verify the installed RECORD and resource digests instead.
     if len({canonicalize_name(item["coordinate"]) for item in dependencies}) != len(dependencies):
         raise RuntimeConditionsError(f"{name}: duplicate binding package dependency")
-    if len({item["extension"] for item in dependencies}) != len(dependencies):
+    if len({parse_identifier(item["extension"]) for item in dependencies}) != len(dependencies):
         raise RuntimeConditionsError(f"{name}: duplicate binding extension dependency")
-    expected_extensions = set(models[root_id].get("dependencies", []))
-    if {item["extension"] for item in dependencies} != expected_extensions:
+    expected_extensions = {parse_identifier(dep) for dep in models[root_id].get("dependencies", [])}
+    if {parse_identifier(item["extension"]) for item in dependencies} != expected_extensions:
         raise RuntimeConditionsError(f"{name}: direct package dependencies do not match root extension edges")
     distribution = metadata.distribution(name)
     try:
@@ -564,7 +562,7 @@ def _verify_closure(
     for item in dependencies:
         dep_key = canonicalize_name(item["coordinate"])
         dependency = all_packages.get(dep_key)
-        if dependency is None or dependency.installed.import_package != item["name"] or dependency.model["rootExtension"]["id"] != item["extension"]:
+        if dependency is None or dependency.installed.import_package != item["name"] or parse_identifier(dependency.model["rootExtension"]) != parse_identifier(item["extension"]):
             raise RuntimeConditionsError(f"{name}: binding dependency {item['coordinate']} identity mismatch")
         tested = item["testedVersion"]
         interval = item["compatibleVersionRange"]

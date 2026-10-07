@@ -1,31 +1,31 @@
 apiVersion: runtimeconditions.io/binding-model/v1alpha1
 kind: RuntimeConditionsBindingModel
 metadata:
-  semanticSha256: a3041109efc8f19e9ce6b4c5477311e0003e4243e4e4a848c9eec9cbbc548306
+  semanticSha256: 31dcf1dd495a8d9ae1abca1c6ba1c3a3569b7ae3e79207428dee1ccecfbcad08
   normalizer:
     name: rc-binding-model
     version: 0.1.0
     sha256: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 coreProfileSchema:
-  id: https://runtimeconditions.io/schemas/profile/0.2.0/runtimeconditions.profile.schema.yaml
-  version: 0.2.0
-  semanticSha256: a090a8016d045f9c3fa872a67f8df293b77ca2809a1bea5ae9fa31a27a06109a
+  id: https://runtimeconditions.io/schemas/profile/0.3.0/runtimeconditions.profile.schema.yaml
+  version: 0.3.0
+  semanticSha256: 83be993b93f81561e405695143f873ef34af65297f32bc2266b6534444da1466
 rootExtension:
   id: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0
   version: 1.0.0
-  semanticSha256: 4fbd4aac4409bee63ef79f6cd630b735df2ac7a9dd50f85482fe4128163f4858
+  semanticSha256: e47aea9a671c28d6621ac7e9c1d41b3da6a7777e3c7d62ddcea4e3501e63f3b4
 extensions:
 - id: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0
   version: 1.0.0
-  semanticSha256: 07fa463ecccf2fddaabfab722b57af3434b25b29320b62426cfccce814140e19
+  semanticSha256: 48a5112f95bb84a54a2d3af1d7fff6d4ad9b76e9193290ec60f55ea742187610
 - id: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0
   version: 1.0.0
-  semanticSha256: 4fbd4aac4409bee63ef79f6cd630b735df2ac7a9dd50f85482fe4128163f4858
+  semanticSha256: e47aea9a671c28d6621ac7e9c1d41b3da6a7777e3c7d62ddcea4e3501e63f3b4
   dependencies:
-  - https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0
+  - {id: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0, version: 1.0.0}
 dependencyEdges:
-- from: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0
-  to: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0
+- from: {id: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0, version: 1.0.0}
+  to: {id: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0, version: 1.0.0}
 vocabulary:
   owners:
   - coordinate: condition-field:job:process:command
@@ -49,7 +49,7 @@ vocabulary:
     kind: job
     provenance:
       owner: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0
-      extensionSha256: 4fbd4aac4409bee63ef79f6cd630b735df2ac7a9dd50f85482fe4128163f4858
+      extensionSha256: e47aea9a671c28d6621ac7e9c1d41b3da6a7777e3c7d62ddcea4e3501e63f3b4
       coordinate: kind:job
   interfaces:
   - coordinate: interface:job:process
@@ -58,7 +58,7 @@ vocabulary:
     type: process
     provenance:
       owner: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0
-      extensionSha256: 4fbd4aac4409bee63ef79f6cd630b735df2ac7a9dd50f85482fe4128163f4858
+      extensionSha256: e47aea9a671c28d6621ac7e9c1d41b3da6a7777e3c7d62ddcea4e3501e63f3b4
       coordinate: interface:job:process
   conditionFields:
   - coordinate: condition-field:job:process:command
@@ -70,15 +70,15 @@ vocabulary:
     - name: command
     provenance:
       owner: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0
-      extensionSha256: 4fbd4aac4409bee63ef79f6cd630b735df2ac7a9dd50f85482fe4128163f4858
+      extensionSha256: e47aea9a671c28d6621ac7e9c1d41b3da6a7777e3c7d62ddcea4e3501e63f3b4
       coordinate: condition-field:job:process:command
 scopes:
 - coordinate: job:process
   kind: job
   interfaceType: process
   applicableSchemas:
-  - https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0#schema:command-limit
-  - https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0#schema:job-process
+  - https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0#schema:command-limit:command-limit
+  - https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0#schema:job-process:job-process
   projection:
     kind: object
     required:
@@ -92,12 +92,12 @@ scopes:
         scalar: string
         provenance:
           owner: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0
-          extensionSha256: 4fbd4aac4409bee63ef79f6cd630b735df2ac7a9dd50f85482fe4128163f4858
+          extensionSha256: e47aea9a671c28d6621ac7e9c1d41b3da6a7777e3c7d62ddcea4e3501e63f3b4
           coordinate: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0#schema:job-process
           jsonPointer: /properties/command
       provenance:
         owner: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0
-        extensionSha256: 4fbd4aac4409bee63ef79f6cd630b735df2ac7a9dd50f85482fe4128163f4858
+        extensionSha256: e47aea9a671c28d6621ac7e9c1d41b3da6a7777e3c7d62ddcea4e3501e63f3b4
         coordinate: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0#schema:job-process
         jsonPointer: /properties/command
     - name: interface
@@ -106,17 +106,17 @@ scopes:
         kind: object
         provenance:
           owner: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0
-          extensionSha256: 4fbd4aac4409bee63ef79f6cd630b735df2ac7a9dd50f85482fe4128163f4858
+          extensionSha256: e47aea9a671c28d6621ac7e9c1d41b3da6a7777e3c7d62ddcea4e3501e63f3b4
           coordinate: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0#schema:job-process
           jsonPointer: /properties/interface
       provenance:
         owner: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0
-        extensionSha256: 4fbd4aac4409bee63ef79f6cd630b735df2ac7a9dd50f85482fe4128163f4858
+        extensionSha256: e47aea9a671c28d6621ac7e9c1d41b3da6a7777e3c7d62ddcea4e3501e63f3b4
         coordinate: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0#schema:job-process
         jsonPointer: /properties/interface
     provenance:
       owner: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0
-      extensionSha256: 07fa463ecccf2fddaabfab722b57af3434b25b29320b62426cfccce814140e19
+      extensionSha256: 48a5112f95bb84a54a2d3af1d7fff6d4ad9b76e9193290ec60f55ea742187610
       coordinate: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0#schema:command-limit
 schemas:
 - coordinate: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0#schema:command-limit
@@ -147,7 +147,7 @@ schemas:
         $ref: '#/$defs/CommandLimit'
     provenance:
       owner: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0
-      extensionSha256: 07fa463ecccf2fddaabfab722b57af3434b25b29320b62426cfccce814140e19
+      extensionSha256: 48a5112f95bb84a54a2d3af1d7fff6d4ad9b76e9193290ec60f55ea742187610
       coordinate: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0#schema:command-limit
   definitions:
   - name: CommandLimit
@@ -163,27 +163,27 @@ schemas:
             maxLength: 6
           provenance:
             owner: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0
-            extensionSha256: 07fa463ecccf2fddaabfab722b57af3434b25b29320b62426cfccce814140e19
+            extensionSha256: 48a5112f95bb84a54a2d3af1d7fff6d4ad9b76e9193290ec60f55ea742187610
             coordinate: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0#schema:command-limit
             jsonPointer: /$defs/CommandLimit/properties/command
         provenance:
           owner: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0
-          extensionSha256: 07fa463ecccf2fddaabfab722b57af3434b25b29320b62426cfccce814140e19
+          extensionSha256: 48a5112f95bb84a54a2d3af1d7fff6d4ad9b76e9193290ec60f55ea742187610
           coordinate: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0#schema:command-limit
           jsonPointer: /$defs/CommandLimit/properties/command
       provenance:
         owner: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0
-        extensionSha256: 07fa463ecccf2fddaabfab722b57af3434b25b29320b62426cfccce814140e19
+        extensionSha256: 48a5112f95bb84a54a2d3af1d7fff6d4ad9b76e9193290ec60f55ea742187610
         coordinate: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0#schema:command-limit
         jsonPointer: /$defs/CommandLimit
     provenance:
       owner: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0
-      extensionSha256: 07fa463ecccf2fddaabfab722b57af3434b25b29320b62426cfccce814140e19
+      extensionSha256: 48a5112f95bb84a54a2d3af1d7fff6d4ad9b76e9193290ec60f55ea742187610
       coordinate: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0#schema:command-limit
       jsonPointer: /$defs/CommandLimit
   provenance:
     owner: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0
-    extensionSha256: 07fa463ecccf2fddaabfab722b57af3434b25b29320b62426cfccce814140e19
+    extensionSha256: 48a5112f95bb84a54a2d3af1d7fff6d4ad9b76e9193290ec60f55ea742187610
     coordinate: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0#schema:command-limit
 - coordinate: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0#schema:job-process
   owner: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0
@@ -223,12 +223,12 @@ schemas:
         scalar: string
         provenance:
           owner: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0
-          extensionSha256: 4fbd4aac4409bee63ef79f6cd630b735df2ac7a9dd50f85482fe4128163f4858
+          extensionSha256: e47aea9a671c28d6621ac7e9c1d41b3da6a7777e3c7d62ddcea4e3501e63f3b4
           coordinate: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0#schema:job-process
           jsonPointer: /properties/command
       provenance:
         owner: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0
-        extensionSha256: 4fbd4aac4409bee63ef79f6cd630b735df2ac7a9dd50f85482fe4128163f4858
+        extensionSha256: e47aea9a671c28d6621ac7e9c1d41b3da6a7777e3c7d62ddcea4e3501e63f3b4
         coordinate: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0#schema:job-process
         jsonPointer: /properties/command
     - name: interface
@@ -237,19 +237,19 @@ schemas:
         kind: object
         provenance:
           owner: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0
-          extensionSha256: 4fbd4aac4409bee63ef79f6cd630b735df2ac7a9dd50f85482fe4128163f4858
+          extensionSha256: e47aea9a671c28d6621ac7e9c1d41b3da6a7777e3c7d62ddcea4e3501e63f3b4
           coordinate: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0#schema:job-process
           jsonPointer: /properties/interface
       provenance:
         owner: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0
-        extensionSha256: 4fbd4aac4409bee63ef79f6cd630b735df2ac7a9dd50f85482fe4128163f4858
+        extensionSha256: e47aea9a671c28d6621ac7e9c1d41b3da6a7777e3c7d62ddcea4e3501e63f3b4
         coordinate: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0#schema:job-process
         jsonPointer: /properties/interface
     provenance:
       owner: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0
-      extensionSha256: 4fbd4aac4409bee63ef79f6cd630b735df2ac7a9dd50f85482fe4128163f4858
+      extensionSha256: e47aea9a671c28d6621ac7e9c1d41b3da6a7777e3c7d62ddcea4e3501e63f3b4
       coordinate: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0#schema:job-process
   provenance:
     owner: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0
-    extensionSha256: 4fbd4aac4409bee63ef79f6cd630b735df2ac7a9dd50f85482fe4128163f4858
+    extensionSha256: e47aea9a671c28d6621ac7e9c1d41b3da6a7777e3c7d62ddcea4e3501e63f3b4
     coordinate: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0#schema:job-process

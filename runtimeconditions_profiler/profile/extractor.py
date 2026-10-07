@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from ..constants import API_VERSION
+from ..extension.identity import parse_identifier, reference_object
 from ..errors import RuntimeConditionsError
 from ..manifest.mapping import find_option, simple_name, strip_package_class
 from ..models import DiscoveryResult, ProfileOptions, SymbolMapping
@@ -43,7 +44,7 @@ class ProfileExtractor:
                 workload["version"] = options.workload_version
             profile = {"apiVersion": API_VERSION, "kind": "RuntimeConditionsProfile", "metadata": {"name": options.name}, "workload": workload, "extensions": [], "conditions": []}
         sdk_conditions: list[dict[str, Any]] = []
-        sdk_extensions: list[str] = []
+        sdk_extensions: list[tuple[str, str]] = []
         if discovery.sdk_mappings:
             direct_conditions, direct_extensions = DirectSDKPythonExtractor(
                 discovery.sdk_mappings, discovery.sdk_extensions
@@ -51,11 +52,11 @@ class ProfileExtractor:
             sdk_conditions.extend(direct_conditions)
             sdk_extensions.extend(direct_extensions)
         for extension in sdk_extensions:
-            add_unique(profile["extensions"], extension)
+            add_unique(profile["extensions"], reference_object(extension))
         for condition in sdk_conditions:
             if condition not in profile["conditions"]:
                 profile["conditions"].append(condition)
-        profile["extensions"].sort()
+        profile["extensions"].sort(key=parse_identifier)
         profile_diagnostics = ProfileValidator().validate(profile, discovery)
         if profile_diagnostics:
             raise RuntimeConditionsError(
@@ -77,7 +78,7 @@ class PythonExtractionScanner:
             for mapping in binding.all_mappings():
                 self.binding_by_class[mapping.class_name] = binding
                 self.binding_by_class[f"{binding.manifest.package}.{mapping.class_name}"] = binding
-        self.used_extensions: list[str] = []
+        self.used_extensions: list[tuple[str, str]] = []
         self.conditions: list[dict[str, Any]] = []
         self.source_index = PythonSourceIndex()
 
@@ -413,15 +414,15 @@ class PythonExtractionScanner:
             raise RuntimeConditionsError(f"unsupported schema class {normalized}")
         return deep_copy(schema)
 
-    def extension_closure(self) -> list[str]:
-        dependencies: dict[str, list[str]] = {}
+    def extension_closure(self) -> list[dict[str, str]]:
+        dependencies: dict[tuple[str, str], list[tuple[str, str]]] = {}
         for artifact in self.discovery.validated_artifacts:
             if artifact.extension_id:
-                dependencies[artifact.extension_id] = artifact.dependencies
-        resolved: set[str] = set()
+                dependencies[artifact.reference] = artifact.dependencies
+        resolved: set[tuple[str, str]] = set()
         for extension in self.used_extensions:
             add_extension_closure(extension, dependencies, resolved)
-        return sorted(resolved)
+        return [reference_object(ref) for ref in sorted(resolved)]
 
 
 def remove_empty_configuration(condition: dict[str, Any]) -> None:

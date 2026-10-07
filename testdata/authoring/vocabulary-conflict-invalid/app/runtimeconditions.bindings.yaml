@@ -1,7 +1,7 @@
 apiVersion: runtimeconditions.io/v1alpha1
 kind: RuntimeConditionsBinding
 metadata:
-  extension: https://example.com/python-fixtures/conflict-app:v1alpha1
+  extension: {id: https://example.com/python-fixtures/conflict-app, version: v1alpha1}
   language: python
 python:
   package: app_fixture

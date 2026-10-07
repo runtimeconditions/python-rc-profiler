@@ -3,9 +3,10 @@ from __future__ import annotations
 from typing import Any
 
 from ..constants import API_VERSION
+from ..extension.identity import parse_identifier
 from ..extension import ExtensionVocabulary
 from ..models import Diagnostic, DiscoveryResult
-from ..util import add_extension_closure, as_map, string_list
+from ..util import add_extension_closure, as_map
 
 
 class ProfileValidator:
@@ -16,25 +17,29 @@ class ProfileValidator:
             add(f"apiVersion must be {API_VERSION}")
         if profile.get("kind") != "RuntimeConditionsProfile":
             add("kind must be RuntimeConditionsProfile")
-        extensions = string_list(profile.get("extensions"))
+        try:
+            extensions = [parse_identifier(ref) for ref in profile.get("extensions", [])]
+        except Exception as exc:
+            add(str(exc))
+            extensions = []
         conditions = profile.get("conditions") if isinstance(profile.get("conditions"), list) else []
         if not extensions and conditions:
             add("extensions must declare the extension dependency closure used by conditions")
 
         definitions = {
-            artifact.extension_id: artifact.extension_definition
+            artifact.reference: artifact.extension_definition
             for artifact in discovery.validated_artifacts
             if artifact.extension_id and artifact.extension_definition
         }
-        definitions.update({artifact.id: artifact.definition for artifact in discovery.sdk_extensions})
-        declared: set[str] = set()
+        definitions.update({(artifact.id, artifact.version): artifact.definition for artifact in discovery.sdk_extensions})
+        declared: set[tuple[str, str]] = set()
         for extension in extensions:
             if extension in declared:
                 add(f"duplicate extension id {extension}")
             declared.add(extension)
             if extension not in definitions:
                 add(f"missing extension definition for {extension}")
-        closure: set[str] = set()
+        closure: set[tuple[str, str]] = set()
         for extension in extensions:
             add_extension_closure(extension, {key: value.dependencies for key, value in definitions.items()}, closure)
         for extension in closure:

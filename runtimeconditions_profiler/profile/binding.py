@@ -18,9 +18,9 @@ class BindingArtifact:
         return self.artifact.manifest
 
     @property
-    def extension_id(self) -> str:
+    def extension_id(self) -> tuple[str, str]:
         assert self.artifact.extension_id is not None
-        return self.artifact.extension_id
+        return self.artifact.reference
 
     def all_mappings(self) -> list[SymbolMapping]:
         return all_mappings(self.manifest)

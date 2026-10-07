@@ -43,8 +43,9 @@ class ManifestModel:
 @dataclass(frozen=True)
 class ExtensionDefinition:
     id: str
+    version: str
     uri: str
-    dependencies: list[str]
+    dependencies: list[tuple[str, str]]
     kinds: list[str]
     interface_types: list[tuple[str, str]]
     interface_fields: list[tuple[str, str, str]]
@@ -67,12 +68,19 @@ class RuntimeConditionsArtifact:
 class ValidatedArtifact:
     artifact: RuntimeConditionsArtifact
     manifest_extension_id: Optional[str] = None
+    manifest_extension_version: Optional[str] = None
     extension_id: Optional[str] = None
+    extension_version: Optional[str] = None
     extension_definition_uri: Optional[str] = None
     extension_definition: Optional[ExtensionDefinition] = None
     manifest: Optional[ManifestModel] = None
-    dependencies: list[str] = field(default_factory=list)
+    dependencies: list[tuple[str, str]] = field(default_factory=list)
     diagnostics: list[Diagnostic] = field(default_factory=list)
+
+    @property
+    def reference(self) -> tuple[str, str]:
+        assert self.extension_id is not None and self.extension_version is not None
+        return self.extension_id, self.extension_version
 
     def add(self, code: str, source: str, message: str) -> None:
         self.diagnostics.append(Diagnostic("error", code, source, message))
@@ -138,9 +146,11 @@ class DiscoveryResult:
                     "extension": artifact.extension_uri,
                     "origin": artifact.origin,
                     "manifestExtensionId": validated.manifest_extension_id,
+                    "manifestExtensionVersion": validated.manifest_extension_version,
                     "extensionId": validated.extension_id,
+                    "extensionVersion": validated.extension_version,
                     "extensionDefinition": validated.extension_definition_uri,
-                    "dependencies": validated.dependencies,
+                    "dependencies": [{"id": ref[0], "version": ref[1]} for ref in validated.dependencies],
                     "pythonPackage": validated.manifest.package if validated.manifest else None,
                     "declarations": len(validated.manifest.declarations) if validated.manifest else 0,
                     "options": len(validated.manifest.options) if validated.manifest else 0,

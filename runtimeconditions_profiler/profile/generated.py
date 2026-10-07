@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ..errors import RuntimeConditionsError
+from ..extension.identity import parse_identifier
 from ..project.verify import VerifiedBindingPackage, VerifiedBindingSet, resolve_marker_declaration
 from .static_values import NativeSymbol, SourceCall, StaticCall, StaticProject
 
@@ -18,7 +19,7 @@ class ExtractedCondition:
     line: int
     column: int
     condition: dict[str, Any]
-    direct_extensions: tuple[str, ...]
+    direct_extensions: tuple[tuple[str, str], ...]
     structural_fallbacks: tuple[str, ...] = ()
 
 
@@ -73,7 +74,7 @@ class GeneratedBindingExtractor:
             for contract in package.manifest.get("importedMarkerContracts", []):
                 provider, declaration = resolve_marker_declaration(
                     contract, verified.packages,
-                    {item["id"] for item in package.model["extensions"]},
+                    {parse_identifier(item) for item in package.model["extensions"]},
                 )
                 key = (root, declaration["function"])
                 if key in self.declarations:
@@ -113,7 +114,7 @@ class GeneratedBindingExtractor:
         if call.kwargs:
             raise StructuralError(coordinate, "declaration accepts positional field objects only")
         condition: dict[str, Any] = {"kind": declaration["sourceName"]}
-        contributing = {declaration["owner"]}
+        contributing = {parse_identifier(package.model["rootExtension"])}
         selected_interface: str | None = None
         for argument in call.args:
             if not isinstance(argument, StaticCall):
@@ -152,7 +153,7 @@ class GeneratedBindingExtractor:
                     raise StructuralError(_coordinate(edge), "interface type conflicts with fixed scope")
                 value = {"type": edge["fixedInterfaceType"], **value}
             self._put_path(condition, edge["path"], value, _coordinate(edge))
-            contributing.add(owner.model["rootExtension"]["id"])
+            contributing.add(parse_identifier(owner.model["rootExtension"]))
         if selected_interface is not None:
             current = condition.get("interface")
             if current is None:

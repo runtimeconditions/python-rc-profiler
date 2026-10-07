@@ -1,11 +1,11 @@
 apiVersion: runtimeconditions.io/v1alpha1
 kind: RuntimeConditionsExtensionDefinition
 metadata:
-  uri: https://example.com/python-fixtures/unresolved
+  id: https://example.com/python-fixtures/unresolved
   version: v1alpha1
 spec:
   dependencies:
-    - https://example.com/python-fixtures/missing/v1alpha1/runtimeconditions.extension.yaml
+    - {id: https://example.com/python-fixtures/missing/v1alpha1/runtimeconditions.extension.yaml, version: v1alpha1}
   kinds:
     - name: python.fixture
 

@@ -34,7 +34,7 @@ include = ["runtimeconditions_profiler*"]
 namespaces = false
 
 [tool.setuptools.package-data]
-runtimeconditions_profiler = ["schemas.json", "runtimeconditions.profile.v0.2.0.schema.yaml"]
+runtimeconditions_profiler = ["schemas.json", "runtimeconditions.profile.v0.3.0.schema.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

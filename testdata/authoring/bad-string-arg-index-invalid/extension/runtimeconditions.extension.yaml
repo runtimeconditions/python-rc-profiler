@@ -1,7 +1,7 @@
 apiVersion: runtimeconditions.io/v1alpha1
 kind: RuntimeConditionsExtensionDefinition
 metadata:
-  uri: https://example.com/python-fixtures/bad-string
+  id: https://example.com/python-fixtures/bad-string
   version: v1alpha1
 spec:
   kinds:

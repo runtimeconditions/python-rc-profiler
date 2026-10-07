@@ -68,11 +68,16 @@
         "additionalProperties": false,
         "required": [
           "id",
+          "version",
           "semanticSha256"
         ],
         "properties": {
           "id": {
             "$ref": "#/$defs/extensionIdentifier"
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1
           },
           "semanticSha256": {
             "$ref": "#/$defs/sha256"
@@ -242,8 +247,9 @@
     ],
     "$defs": {
       "extensionIdentifier": {
+        "description": "IDs SHOULD use a resolver-supported format; URI syntax is not required.",
         "type": "string",
-        "pattern": "^https://[^/?#@\\s]+/[^/:?#%\\s]+(?:/[^/:?#%\\s]+)?:[^/:?#%\\s]+$"
+        "minLength": 1
       },
       "sha256": {
         "type": "string",
@@ -876,8 +882,26 @@
     },
     "$defs": {
       "extensionIdentifier": {
+        "description": "IDs SHOULD use a resolver-supported format; URI syntax is not required.",
         "type": "string",
-        "pattern": "^https://[^/?#@\\s]+/[^/:?#%\\s]+(?:/[^/:?#%\\s]+)?:[^/:?#%\\s]+$"
+        "minLength": 1
+      },
+      "extensionReference": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "version"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/extensionIdentifier"
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
       },
       "sha256": {
         "type": "string",
@@ -987,8 +1011,7 @@
             "type": "array",
             "x-runtimeconditions-ordering": "set",
             "items": {
-              "type": "string",
-              "minLength": 1
+              "$ref": "#/$defs/extensionReference"
             }
           }
         }
@@ -1002,12 +1025,10 @@
         "additionalProperties": false,
         "properties": {
           "from": {
-            "type": "string",
-            "minLength": 1
+            "$ref": "#/$defs/extensionReference"
           },
           "to": {
-            "type": "string",
-            "minLength": 1
+            "$ref": "#/$defs/extensionReference"
           }
         }
       },
@@ -1693,8 +1714,26 @@
     ],
     "$defs": {
       "extensionIdentifier": {
+        "description": "IDs SHOULD use a resolver-supported format; URI syntax is not required.",
         "type": "string",
-        "pattern": "^https://[^/?#@\\s]+/[^/:?#%\\s]+(?:/[^/:?#%\\s]+)?:[^/:?#%\\s]+$"
+        "minLength": 1
+      },
+      "extensionReference": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "version"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/extensionIdentifier"
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
       },
       "sha256": {
         "type": "string",
@@ -1923,7 +1962,7 @@
             "x-runtimeconditions-ordering": "set",
             "uniqueItems": true,
             "items": {
-              "$ref": "#/$defs/nonEmptyString"
+              "$ref": "#/$defs/extensionReference"
             }
           }
         }
@@ -1941,7 +1980,7 @@
         ],
         "properties": {
           "extension": {
-            "$ref": "#/$defs/nonEmptyString"
+            "$ref": "#/$defs/extensionReference"
           },
           "coordinate": {
             "$ref": "#/$defs/nonEmptyString"
@@ -2080,16 +2119,15 @@
       "metadata": {
         "type": "object",
         "required": [
-          "uri",
+          "id",
           "version"
         ],
         "additionalProperties": false,
         "properties": {
-          "uri": {
+          "id": {
+            "description": "IDs SHOULD use a resolver-supported format; URI syntax is not required.",
             "type": "string",
-            "minLength": 1,
-            "format": "uri",
-            "pattern": "^https://[^/?#@\\s]+/[^/:?#%\\s]+(?:/[^/:?#%\\s]+)?$"
+            "minLength": 1
           },
           "version": {
             "type": "string",
@@ -2098,6 +2136,22 @@
           "semanticSha256": {
             "type": "string",
             "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      },
+      "extensionReference": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "version"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/nonEmptyString"
+          },
+          "version": {
+            "$ref": "#/$defs/nonEmptyString"
           }
         }
       },
@@ -2111,10 +2165,7 @@
             "x-runtimeconditions-ordering": "set",
             "uniqueItems": true,
             "items": {
-              "type": "string",
-              "minLength": 1,
-              "format": "uri",
-              "pattern": "^https://[^/?#@\\s]+/[^/:?#%\\s]+(?:/[^/:?#%\\s]+)?:[^/:?#%\\s]+$"
+              "$ref": "#/$defs/extensionReference"
             }
           },
           "kinds": {

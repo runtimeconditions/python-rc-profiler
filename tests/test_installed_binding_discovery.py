@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from runtimeconditions_profiler.extension.identity import parse_identifier, reference_object
+
 import sys
 import json
 import base64
@@ -269,7 +271,7 @@ def verified_distribution(
     extension = {
         "apiVersion": "runtimeconditions.io/v1alpha1",
         "kind": "RuntimeConditionsExtensionDefinition",
-        "metadata": {"uri": extension_id.rsplit(":", 1)[0], "version": "1.0.0"},
+        "metadata": {"id": extension_id, "version": "1.0.0"},
         "spec": {"kinds": [{"name": kind}]},
     }
     semantic = verify._semantic_value(
@@ -278,7 +280,7 @@ def verified_distribution(
         verify._schemas()[verify.SCHEMAS["runtimeconditions.extension.yaml"]],
     )
     extension_digest = verify._canonical_sha256(semantic)
-    root = {"id": extension["metadata"]["uri"] + ":" + extension["metadata"]["version"], "version": "1.0.0", "semanticSha256": extension_digest}
+    root = {"id": extension["metadata"]["id"], "version": extension["metadata"]["version"], "semanticSha256": extension_digest}
     package_id = {"language": "python", "coordinate": name, "name": import_package, "version": "1.2.3", "minimumPythonVersion": "3.11"}
     model = {
         "apiVersion": "runtimeconditions.io/binding-model/v1alpha1",
@@ -296,7 +298,7 @@ def verified_distribution(
         "kind": "RuntimeConditionsBindingManifest",
         "generated": {"nonEditable": True, "emitter": "test-emitter", "version": "1"},
         "model": {"apiVersion": model["apiVersion"], "semanticSha256": model_digest},
-        "extension": {"id": root["id"], "semanticSha256": extension_digest},
+        "extension": dict(root),
         "package": package_id,
         "declarations": [{"modelRef": {"coordinate": f"kind:{kind}"}, "owner": root["id"], "sourceName": kind, "function": kind, "markerInterface": f"{kind.title()}Marker", "markerMethod": f"{kind}_marker", "file": "bindings.py"}],
         "importedMarkerContracts": [],
@@ -521,7 +523,7 @@ def test_direct_binding_dependency_is_resolved_from_installed_metadata(
     dependency_root = dependency_model["rootExtension"]
     dependency_extension = read(dependency_record, "runtimeconditions.extension.yaml")
     root_extension = read(root_record, "runtimeconditions.extension.yaml")
-    root_extension["spec"]["dependencies"] = [dependency_root["id"]]
+    root_extension["spec"]["dependencies"] = [reference_object(parse_identifier(dependency_root))]
     root_schema = verify._schemas()[verify.SCHEMAS["runtimeconditions.extension.yaml"]]
     root_digest = verify._canonical_sha256(verify._semantic_value(root_extension, root_schema, root_schema))
     replace_resource(root_record, "runtimeconditions.extension.yaml", root_extension)
@@ -529,9 +531,9 @@ def test_direct_binding_dependency_is_resolved_from_installed_metadata(
     model = read(root_record, "runtimeconditions.binding-model.yaml")
     model["rootExtension"]["semanticSha256"] = root_digest
     model["extensions"][0]["semanticSha256"] = root_digest
-    model["extensions"][0]["dependencies"] = [dependency_root["id"]]
+    model["extensions"][0]["dependencies"] = [reference_object(parse_identifier(dependency_root))]
     model["extensions"].append(dependency_root)
-    model["dependencyEdges"] = [{"from": model["rootExtension"]["id"], "to": dependency_root["id"]}]
+    model["dependencyEdges"] = [{"from": reference_object(parse_identifier(model["rootExtension"])), "to": reference_object(parse_identifier(dependency_root))}]
     model["vocabulary"]["ownedDeclarations"][0]["provenance"]["extensionSha256"] = root_digest
     model["vocabulary"]["importedDeclarations"] = [{
         "coordinate": "kind:dependency", "owner": dependency_root["id"],
@@ -563,7 +565,7 @@ def test_direct_binding_dependency_is_resolved_from_installed_metadata(
     release["dependencyLock"]["extensions"][0]["sourceSha256"] = hashlib.sha256(
         (root_record.root / "example_binding/runtimeconditions.extension.yaml").read_bytes()
     ).hexdigest()
-    release["dependencyLock"]["extensions"][0]["dependencies"] = [dependency_root["id"]]
+    release["dependencyLock"]["extensions"][0]["dependencies"] = [reference_object(parse_identifier(dependency_root))]
     release["dependencyLock"]["extensions"].append({
         "id": dependency_root["id"], "version": dependency_root["version"],
         "semanticSha256": dependency_root["semanticSha256"],
@@ -573,7 +575,7 @@ def test_direct_binding_dependency_is_resolved_from_installed_metadata(
         "sourceBackend": "package", "sourceLocator": "installed:dependency-binding",
     })
     release["packageDependencies"] = [{
-        "extension": dependency_root["id"], "coordinate": "dependency-binding",
+        "extension": reference_object(parse_identifier(dependency_root)), "coordinate": "dependency-binding",
         "name": "dependency_binding", "testedVersion": "1.2.3",
         "compatibleVersionRange": {"minimumInclusive": "1.2.3", "nextBreakingExclusive": "2.0.0"},
         "artifact": {"kind": "python-wheel", "sha256": "0" * 64},
@@ -637,16 +639,16 @@ def semantic_package(
 
 
 def semantic_set(*packages: verify.VerifiedBindingPackage) -> verify.VerifiedBindingSet:
-    by_id = {item.model["rootExtension"]["id"]: item for item in packages}
+    by_id = {parse_identifier(item.model["rootExtension"]): item for item in packages}
     for package in packages:
         seen: set[str] = set()
-        pending = [package.model["rootExtension"]["id"]]
+        pending = [parse_identifier(package.model["rootExtension"])]
         while pending:
             current = pending.pop()
             if current in seen or current not in by_id:
                 continue
             seen.add(current)
-            pending.extend(by_id[current].extension["spec"].get("dependencies", []))
+            pending.extend(parse_identifier(ref) for ref in by_id[current].extension["spec"].get("dependencies", []))
         package.model["extensions"] = [by_id[item].model["rootExtension"] for item in sorted(seen)]
     return verify.VerifiedBindingSet(tuple(packages), tuple(packages))
 
@@ -708,13 +710,13 @@ def test_transitive_marker_reexport_and_scoped_interface_are_static(
         "declarations": [declaration], "importedMarkerContracts": [], "rootBindings": [], "types": [],
     })
     middle = semantic_package(middle_id, "middle_binding", {
-        "dependencies": [leaf_id], "interfaceTypes": [{"name": "process", "targetKind": "worker"}],
+        "dependencies": [{"id": leaf_id, "version": "1.0.0"}], "interfaceTypes": [{"name": "process", "targetKind": "worker"}],
     }, {
         "declarations": [], "importedMarkerContracts": [{**contract, "providerPackage": "leaf_binding"}],
         "rootBindings": [], "types": [],
     })
     root = semantic_package(root_id, "root_binding", {
-        "dependencies": [middle_id],
+        "dependencies": [{"id": middle_id, "version": "1.0.0"}],
         "conditionFields": [{"name": "command", "appliesToKinds": ["worker"],
                              "appliesToInterfaceTypes": ["process"]}],
     }, {
@@ -736,7 +738,7 @@ def test_transitive_marker_reexport_and_scoped_interface_are_static(
     bindings = semantic_set(leaf, middle, root)
     provider, resolved = verify.resolve_marker_declaration(
         root.manifest["importedMarkerContracts"][0], bindings.packages,
-        {item["id"] for item in root.model["extensions"]},
+        {parse_identifier(item) for item in root.model["extensions"]},
     )
     assert provider is leaf and resolved is declaration
     (tmp_path / "app.py").write_text(
@@ -747,13 +749,13 @@ def test_transitive_marker_reexport_and_scoped_interface_are_static(
         "kind": "worker", "command": "sample", "interface": {"type": "process"},
     }
     profile = GeneratedProfileValidator(bindings).build(extracted, "sample", "example/sample", "1")
-    assert profile["extensions"] == sorted((leaf_id, middle_id, root_id))
+    assert profile["extensions"] == [{"id": item, "version": "1.0.0"} for item in sorted((leaf_id, middle_id, root_id))]
 
     middle.manifest["importedMarkerContracts"][0]["providerPackage"] = "root_binding"
     with pytest.raises(RuntimeConditionsError, match="provider cycle"):
         verify.resolve_marker_declaration(
             root.manifest["importedMarkerContracts"][0], bindings.packages,
-            {item["id"] for item in root.model["extensions"]},
+            {parse_identifier(item) for item in root.model["extensions"]},
         )
 
 
@@ -815,7 +817,7 @@ def test_generated_conformance_conditions_pass_complete_semantic_validation(
             "kind": "service", "interface": {"type": "http", "endpoint": "sample"},
             "region": "sample",
         }]
-    assert profile["extensions"] == [model["rootExtension"]["id"]]
+    assert profile["extensions"] == [reference_object(parse_identifier(model["rootExtension"]))]
 
 
 @pytest.mark.parametrize(
@@ -840,19 +842,19 @@ def test_generated_conformance_branch_constraints_reject_invalid_conditions(
 
 
 def semantic_candidate(condition: dict[str, object], *extensions: str) -> ExtractedCondition:
-    return ExtractedCondition(Path("/workload/app.py"), 3, 1, condition, tuple(extensions))
+    return ExtractedCondition(Path("/workload/app.py"), 3, 1, condition, tuple((item, "1.0.0") for item in extensions))
 
 
 def test_semantic_validator_emits_direct_ids_and_uses_transitive_schema_closure() -> None:
     base = base_semantic_package()
     middle = semantic_package("https://example.test/middle:1.0.0", "middle_binding", {
-        "dependencies": ["https://example.test/base:1.0.0"],
+        "dependencies": [{"id": "https://example.test/base:1.0.0", "version": "1.0.0"}],
         "schemas": [{"id": "middle", "appliesToKind": "service", "schema": {
             "type": "object", "properties": {"interface": {"type": "object"}},
         }}],
     })
     addon = semantic_package("https://example.test/addon:1.0.0", "addon_binding", {
-        "dependencies": ["https://example.test/middle:1.0.0"],
+        "dependencies": [{"id": "https://example.test/middle:1.0.0", "version": "1.0.0"}],
         "conditionFields": [{"name": "extra", "appliesToKinds": ["service"]}],
         "schemas": [{"id": "addon", "appliesToKind": "service", "schema": {
             "type": "object", "required": ["extra"],
@@ -865,11 +867,11 @@ def test_semantic_validator_emits_direct_ids_and_uses_transitive_schema_closure(
         "https://example.test/base:1.0.0", "https://example.test/addon:1.0.0",
     )
     profile = GeneratedProfileValidator(bindings).build((candidate,), "sample", "example/sample", "1")
-    assert profile["extensions"] == ["https://example.test/addon:1.0.0", "https://example.test/base:1.0.0"]
+    assert profile["extensions"] == [{"id": item, "version": "1.0.0"} for item in ["https://example.test/addon:1.0.0", "https://example.test/base:1.0.0"]]
     assert "https://example.test/middle:1.0.0" not in profile["extensions"]
 
     addon.extension["spec"]["schemas"][0]["schema"]["properties"]["extra"]["const"] = "disabled"
-    with pytest.raises(RuntimeConditionsError, match="extension schema https://example.test/addon:1.0.0/addon"):
+    with pytest.raises(RuntimeConditionsError, match=r"extension schema \('https://example.test/addon:1.0.0', '1.0.0'\)/addon"):
         GeneratedProfileValidator(bindings).build((candidate,), "sample", "example/sample", "1")
 
 
@@ -896,7 +898,7 @@ def test_semantic_validator_rejects_core_identity_and_missing_dependency() -> No
     with pytest.raises(RuntimeConditionsError, match="core profile schema identity or digest mismatch"):
         GeneratedProfileValidator(semantic_set(base))
     base.model["coreProfileSchema"]["semanticSha256"] = CORE_SEMANTIC_SHA256
-    base.extension["spec"]["dependencies"] = ["https://example.test/missing:1.0.0"]
+    base.extension["spec"]["dependencies"] = [{"id": "https://example.test/missing:1.0.0", "version": "1.0.0"}]
     candidate = semantic_candidate({"kind": "service", "interface": {"type": "http"}}, "https://example.test/base:1.0.0")
     with pytest.raises(RuntimeConditionsError, match="no verified installed binding package"):
         GeneratedProfileValidator(semantic_set(base)).build((candidate,), "sample", "example/sample", "1")
@@ -955,7 +957,7 @@ def test_cli_writes_validated_profile_and_preserves_existing_output_on_failure(
     ]
     assert cli.main(args) == 0
     profile = yaml.safe_load(output.read_text())
-    assert profile["extensions"] == ["https://example.test/base:1.0.0"]
+    assert profile["extensions"] == [{"id": item, "version": "1.0.0"} for item in ["https://example.test/base:1.0.0"]]
     assert profile["conditions"] == [{"kind": "service", "interface": {"type": "http"}}]
     assert capsys.readouterr().out == ""
 

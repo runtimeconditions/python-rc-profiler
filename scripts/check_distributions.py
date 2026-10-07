@@ -19,7 +19,7 @@ from packaging.utils import canonicalize_name
 from packaging.version import Version
 
 PACKAGE = "runtimeconditions_profiler"
-RESOURCES = ("schemas.json", "runtimeconditions.profile.v0.2.0.schema.yaml")
+RESOURCES = ("schemas.json", "runtimeconditions.profile.v0.3.0.schema.yaml")
 IMPORT_DISTRIBUTIONS = {
     "jsonschema": "jsonschema",
     "packaging": "packaging",

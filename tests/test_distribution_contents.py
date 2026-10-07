@@ -16,7 +16,7 @@ from scripts.check_distributions import (
 
 SOURCE = Path(__file__).resolve().parents[1]
 PROJECT = tomllib.loads((SOURCE / "pyproject.toml").read_text())["project"]
-RESOURCE = "runtimeconditions_profiler/runtimeconditions.profile.v0.2.0.schema.yaml"
+RESOURCE = "runtimeconditions_profiler/runtimeconditions.profile.v0.3.0.schema.yaml"
 
 
 def archives(tmp_path: Path, mutate=None, version="8.4.2rc1") -> tuple[Path, Path]:
@@ -63,7 +63,7 @@ def test_distribution_contents_accept_complete_archives(tmp_path: Path, version:
     result = check_distributions(wheel, sdist, SOURCE, expected_version=version)
     assert result["status"] == "passed"
     assert result["version"] == version
-    assert set(result["resources"]) == {"schemas.json", "runtimeconditions.profile.v0.2.0.schema.yaml"}
+    assert set(result["resources"]) == {"schemas.json", "runtimeconditions.profile.v0.3.0.schema.yaml"}
     assert "referencing>=0.28.4" in result["runtimeDependencies"]
 
 

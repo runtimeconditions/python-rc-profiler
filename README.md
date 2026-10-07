@@ -92,22 +92,20 @@ mapping workflow.
 
 ## Extension IDs and remote resolution
 
-An extension identifier in a production profile has the Section 5.1 form
-`<uri>:<version>`, where `<uri>` is an absolute HTTP or HTTPS URI and the
-version follows the **final colon**. For example:
+Each profile extension reference carries the required `id` and `version` fields,
+matching `metadata.id` and `metadata.version` in the extension definition:
 
 ```yaml
 extensions:
-  - https://extensions.example.com/runtimeconditions/jobs:1.2.3
+  - id: https://extensions.example.com/runtimeconditions/jobs
+    version: 1.2.3
 ```
 
-The Python distribution name used by `pip` is separate from this extension
-ID. The publisher must make the extension definition for that ID available to
-profile consumers. An Adapter interpreting the generated profile resolves the
-declared IDs and their transitive dependencies through its configured remote
-extension resolver. Section 5.1 defines the identifier syntax; it does not
-specify a network fetch protocol or make the identifier itself a local file
-path.
+IDs SHOULD use a resolver-supported format, such as a file URI or OCI archive
+reference, but URI syntax is not required. Versions are exact strings; neither
+field is inferred from the other. The Python distribution name used by `pip`
+is separate from this extension identity. Profile consumers resolve the exact
+pairs and their transitive dependencies through their configured resolver.
 
 During **profile generation**, this CLI validates the definitions packaged in
 the installed binding distributions. It does not fetch definitions directly
@@ -136,7 +134,7 @@ and rejects missing resources, stale runtime files, and build output in the
 source archive. Run it against a fresh `dist` directory containing one release.
 
 Both distributions contain the CLI implementation, the four binding validation
-schemas in `schemas.json`, and the pinned v0.2.0 core profile schema. Runtime
+schemas in `schemas.json`, and the pinned v0.3.0 core profile schema. Runtime
 dependencies are declared in `pyproject.toml`; generated bindings supply their
 own extension definitions. The source archive also includes the distribution
 checker, tests, and local test fixtures. This maintainer build needs no sibling

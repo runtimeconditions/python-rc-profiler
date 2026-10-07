@@ -98,7 +98,7 @@ def add_unique(items: list[str], value: str) -> None:
         items.append(value)
 
 
-def add_extension_closure(extension: str, dependencies: dict[str, list[str]], resolved: set[str]) -> None:
+def add_extension_closure(extension: tuple[str, str], dependencies: dict[tuple[str, str], list[tuple[str, str]]], resolved: set[tuple[str, str]]) -> None:
     for dependency in dependencies.get(extension, []):
         add_extension_closure(dependency, dependencies, resolved)
     resolved.add(extension)

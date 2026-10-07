@@ -1,11 +1,11 @@
 apiVersion: runtimeconditions.io/v1alpha1
 kind: RuntimeConditionsExtensionDefinition
 metadata:
-  uri: https://runtimeconditions.io/conformance/dependency-schema-only-root
+  id: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0
   version: 1.0.0
 spec:
   dependencies:
-    - https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0
+    - {id: https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0, version: 1.0.0}
   kinds:
     - name: job
   interfaceTypes:
