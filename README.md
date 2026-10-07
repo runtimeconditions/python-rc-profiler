@@ -187,6 +187,31 @@ SETUPTOOLS_SCM_PRETEND_VERSION_FOR_RUNTIMECONDITIONS_PROFILER="$RELEASE_VERSION"
   --expected-version "$RELEASE_VERSION"
 ```
 
+### Build and test manually from GitHub
+
+After pushing the workflow changes to the default branch, open **Actions →
+Tagged Python release → Run workflow**. Select the branch containing the changes
+to test, keep **mode** set to `build-and-test`, and enter **release_tag**, such as
+`v0.0.1`. This sets the test package version; the Git tag does not need to exist
+and the workflow does not create it. When dispatching at an existing tag,
+`release_tag` can be omitted to use that tag's version.
+
+The manual run builds distributions, runs metadata/content validation and
+regression tests, and runs the same Linux, macOS, and Windows installed-package
+smoke checks as a tagged release. It retains distributions and evidence as
+Actions artifacts. GitHub Release creation and PyPI publication are skipped,
+including when `PYPI_PUBLISH_ENABLED=true` or the selected ref is a tag.
+
+The equivalent CLI command is:
+
+```sh
+gh workflow run release.yml --repo runtimeconditions/python-rc-profiler \
+  --ref main -f mode=build-and-test -f release_tag=v0.0.1
+```
+
+GitHub's **Re-run jobs** repeats the original commit. To test later changes,
+start a new manual run on the updated branch.
+
 ## PyPI publication
 
 The release workflow has a separate `pypi` job. It runs after the verified
@@ -237,16 +262,19 @@ To publish a previously verified GitHub Release after activation, dispatch
 this same workflow **at its existing release tag**, for example:
 
 ```sh
-gh workflow run release.yml --repo runtimeconditions/python-rc-profiler --ref v0.1.0
+gh workflow run release.yml --repo runtimeconditions/python-rc-profiler --ref v0.1.0 \
+  -f mode=promote-pypi
 ```
 
-The workflow must exist on the default branch and at that tag. A manual dispatch
-skips building, smoke checks, and GitHub Release creation; it promotes the
-existing Release's assets. The environment reviewer should confirm the
-original tagged build and smoke jobs passed before approving this promotion.
+The workflow must exist on the default branch and at that tag. The explicit
+`promote-pypi` mode skips building, smoke checks, and GitHub Release creation;
+it promotes the existing Release's assets. The environment reviewer should
+confirm the original tagged build and smoke jobs passed before approving this
+promotion.
 Dispatching at a branch cannot publish to PyPI. If an upload fails, retry the
-PyPI job or dispatch at the same tag after fixing the cause; a partially
-published version requires inspection because PyPI files cannot be replaced.
+PyPI job or dispatch in `promote-pypi` mode at the same tag after fixing the cause;
+a partially published version requires inspection because PyPI files cannot be
+replaced.
 
 **TODO — external PyPI activation:** After `runtimeconditions.io` is approved
 and activated, create the organization-owned project, register the exact

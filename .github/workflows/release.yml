@@ -4,19 +4,33 @@ on:
   push:
     tags:
       - 'v*'
-  # Dispatch at a release tag to promote its existing assets after PyPI activation.
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Manual workflow mode
+        type: choice
+        required: true
+        default: build-and-test
+        options:
+          - build-and-test
+          - promote-pypi
+      release_tag:
+        description: 'Version tag for branch builds (e.g. v0.0.1); leave empty when running at a tag. No Git tag is created.'
+        type: string
+        required: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: python-release-${{ github.ref }}
+  group: python-release-${{ github.ref }}-${{ inputs.mode == 'build-and-test' && 'validation' || 'release' }}
   cancel-in-progress: false
 
 jobs:
   build:
-    if: github.event_name == 'push'
+    if: >-
+      ${{ github.event_name == 'push' ||
+          (github.event_name == 'workflow_dispatch' && inputs.mode == 'build-and-test') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:
@@ -35,8 +49,19 @@ jobs:
       - name: Resolve package version from release tag
         id: tag
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: python scripts/release_artifacts.py check-tag "$RELEASE_TAG" --github-output "$GITHUB_OUTPUT"
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && -n "$INPUT_RELEASE_TAG" ]]; then
+            RELEASE_TAG="$INPUT_RELEASE_TAG"
+          elif [[ "$REF_TYPE" == "tag" ]]; then
+            RELEASE_TAG="$REF_NAME"
+          else
+            echo "Manual branch builds require release_tag, for example v0.0.1. No Git tag needs to exist." >&2
+            exit 1
+          fi
+          python scripts/release_artifacts.py check-tag "$RELEASE_TAG" --github-output "$GITHUB_OUTPUT"
       - name: Build release distributions once
         env:
           SETUPTOOLS_SCM_PRETEND_VERSION_FOR_RUNTIMECONDITIONS_PROFILER: ${{ steps.tag.outputs.version }}
@@ -115,6 +140,7 @@ jobs:
 
   release:
     needs: [build, smoke]
+    if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -148,8 +174,9 @@ jobs:
     if: >-
       ${{ !cancelled() && vars.PYPI_PUBLISH_ENABLED == 'true' &&
           github.ref_type == 'tag' &&
-          (needs.release.result == 'success' ||
-           (github.event_name == 'workflow_dispatch' && needs.release.result == 'skipped')) }}
+          ((github.event_name == 'push' && needs.release.result == 'success') ||
+           (github.event_name == 'workflow_dispatch' && inputs.mode == 'promote-pypi' &&
+            needs.release.result == 'skipped')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment:
