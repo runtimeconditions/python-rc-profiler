@@ -127,8 +127,11 @@ python3 -m venv .venv
 ```
 
 The default `build` command creates a source distribution and builds the wheel
-from that archive. The check compares every runtime module and resource with
-the source, verifies the console entry point and runtime dependency metadata,
+from that archive. `setuptools-scm` derives local build versions from Git tags
+and commit state. The source archive records the resolved version in `PKG-INFO`,
+so installing it requires neither Git nor a version override. The check compares
+every runtime module and resource with the source, verifies the console entry
+point and runtime dependency metadata,
 and rejects missing resources, stale runtime files, and build output in the
 source archive. Run it against a fresh `dist` directory containing one release.
 
@@ -142,10 +145,13 @@ above.
 
 ## Tagged GitHub Releases (maintainers)
 
-Set `project.version` in `pyproject.toml`, commit the release changes, then push
-the matching tag `v<version>` (for example `v0.1.0`). The
-[release workflow](.github/workflows/release.yml) rejects a tag/version mismatch
-or a noncanonical package version before building.
+Commit the release changes, then push a tag `v<version>` (for example `v0.0.1`).
+The tag is the source of the package version; no version file needs editing.
+The [release workflow](.github/workflows/release.yml) validates a canonical
+PEP 440 version without a local suffix, then passes that exact version to the
+build through `SETUPTOOLS_SCM_PRETEND_VERSION_FOR_RUNTIMECONDITIONS_PROFILER`.
+Both distribution metadata and installed-package checks must match it.
+Prerelease tags such as `v0.2.0rc1` produce prerelease GitHub Releases.
 
 The workflow builds the wheel and source archive once, runs strict Twine
 metadata validation and distribution-content checks, and records `SHA256SUMS`.
@@ -164,15 +170,21 @@ existing assets and refuse to replace different bytes. Released versions need
 new version numbers and tags for changed artifacts. The workflow uses the
 repository's `GITHUB_TOKEN`; no publication secret is needed for this step.
 
-To reproduce the checks locally, after building distributions:
+To reproduce a tagged release locally, use a fresh `dist` directory:
 
 ```sh
 .venv/bin/python -m pip install -r requirements/release.txt
-.venv/bin/python scripts/release_artifacts.py check-tag v0.1.0
+RELEASE_TAG=v0.0.1
+.venv/bin/python scripts/release_artifacts.py check-tag "$RELEASE_TAG"
+RELEASE_VERSION=${RELEASE_TAG#v}
+SETUPTOOLS_SCM_PRETEND_VERSION_FOR_RUNTIMECONDITIONS_PROFILER="$RELEASE_VERSION" \
+  .venv/bin/python -m build
 .venv/bin/python -m twine check --strict dist/*.whl dist/*.tar.gz
-.venv/bin/python scripts/check_distributions.py dist/*.whl dist/*.tar.gz
+.venv/bin/python scripts/check_distributions.py dist/*.whl dist/*.tar.gz \
+  --expected-version "$RELEASE_VERSION"
 .venv/bin/python scripts/release_artifacts.py checksums --dist-dir dist
-.venv/bin/python scripts/smoke_install.py --dist-dir dist
+.venv/bin/python scripts/smoke_install.py --dist-dir dist \
+  --expected-version "$RELEASE_VERSION"
 ```
 
 ## PyPI publication

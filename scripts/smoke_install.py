@@ -34,7 +34,7 @@ PACKAGE_PREFIX = "runtimeconditions_conformance_dependency_schema_only_"
 def clean_environment() -> dict[str, str]:
     environment = os.environ.copy()
     for name in tuple(environment):
-        if name.startswith("PIP_") or name in {"PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV"}:
+        if name.startswith(("PIP_", "SETUPTOOLS_SCM_", "VCS_VERSIONING_")) or name in {"PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV"}:
             environment.pop(name)
     environment["PYTHONNOUSERSITE"] = "1"
     return environment
@@ -148,12 +148,14 @@ def run(command: list, cwd: Path, environment: dict, log: Path, expected: int = 
     return result
 
 
-def smoke(directory: Path, fixtures: Path, report: Path) -> dict:
+def smoke(directory: Path, fixtures: Path, report: Path, expected_version: str | None = None) -> dict:
     artifacts = verify_checksums(directory)
     wheel = next(path for path in artifacts if path.suffix == ".whl")
     with zipfile.ZipFile(wheel) as archive:
         metadata_file = next(name for name in archive.namelist() if name.endswith(".dist-info/METADATA"))
         version = BytesParser().parsebytes(archive.read(metadata_file))["Version"]
+        if expected_version is not None and version != expected_version:
+            raise ValueError(f"wheel: expected version {expected_version}, got {version}")
         resources = {name: hashlib.sha256(archive.read(f"runtimeconditions_profiler/{name}")).hexdigest() for name in RESOURCES}
     report.parent.mkdir(parents=True, exist_ok=True)
     environment = clean_environment()
@@ -223,9 +225,10 @@ def main() -> int:
     parser.add_argument("--dist-dir", type=Path, default=Path("dist"))
     parser.add_argument("--fixtures", type=Path, default=Path(__file__).resolve().parents[1] / "testdata/release-smoke")
     parser.add_argument("--report", type=Path, default=Path("release-evidence/smoke.json"))
+    parser.add_argument("--expected-version", help="Require installed artifacts to match this tag-derived version")
     args = parser.parse_args()
     try:
-        smoke(args.dist_dir.resolve(), args.fixtures.resolve(), args.report.resolve())
+        smoke(args.dist_dir.resolve(), args.fixtures.resolve(), args.report.resolve(), args.expected_version)
     except (ValueError, RuntimeError, OSError) as exc:
         parser.exit(1, f"installed release smoke check failed: {exc}\n")
     return 0

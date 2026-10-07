@@ -16,6 +16,7 @@ from pathlib import Path, PurePosixPath
 
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
+from packaging.version import Version
 
 PACKAGE = "runtimeconditions_profiler"
 RESOURCES = ("schemas.json", "runtimeconditions.profile.v0.2.0.schema.yaml")
@@ -47,10 +48,10 @@ def requirement_key(value: str) -> tuple:
     )
 
 
-def check_metadata(data: bytes, project: dict, label: str) -> None:
+def check_metadata(data: bytes, project: dict, version: str, label: str) -> None:
     metadata = BytesParser().parsebytes(data)
     for field, expected in (
-        ("Name", project["name"]), ("Version", project["version"]),
+        ("Name", project["name"]), ("Version", version),
         ("Requires-Python", project["requires-python"]),
         ("Description-Content-Type", "text/markdown"),
     ):
@@ -121,7 +122,7 @@ def sdist_files(path: Path) -> dict[str, bytes]:
     return files
 
 
-def check_distributions(wheel: Path, sdist: Path, source: Path) -> dict:
+def check_distributions(wheel: Path, sdist: Path, source: Path, expected_version: str | None = None) -> dict:
     project = tomllib.loads((source / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     expected = source_payload(source)
     imports = check_imports(expected, project)
@@ -139,8 +140,12 @@ def check_distributions(wheel: Path, sdist: Path, source: Path) -> dict:
         all(name.split("/")[0] in {PACKAGE, metadata_dir} for name in wheel_contents),
         "wheel: unexpected files outside the runtime package and distribution metadata",
     )
-    check_metadata(wheel_contents[f"{metadata_dir}/METADATA"], project, "wheel")
-    check_metadata(sdist_contents["PKG-INFO"], project, "sdist")
+    wheel_metadata = wheel_contents[f"{metadata_dir}/METADATA"]
+    version = expected_version if expected_version is not None else BytesParser().parsebytes(wheel_metadata)["Version"]
+    require(isinstance(version, str) and bool(version), "wheel: missing Version")
+    require(str(Version(version)) == version, "distribution version must be canonical PEP 440")
+    check_metadata(wheel_metadata, project, version, "wheel")
+    check_metadata(sdist_contents["PKG-INFO"], project, version, "sdist")
     entrypoints = configparser.ConfigParser()
     entrypoints.optionxform = str
     entrypoints.read_string(wheel_contents[f"{metadata_dir}/entry_points.txt"].decode("utf-8"))
@@ -161,7 +166,7 @@ def check_distributions(wheel: Path, sdist: Path, source: Path) -> dict:
         "sdist: contains build output, caches, or archived research",
     )
     return {
-        "status": "passed", "name": project["name"], "version": project["version"],
+        "status": "passed", "name": project["name"], "version": version,
         "pythonModules": sum(name.endswith(".py") for name in expected),
         "resources": {name: hashlib.sha256(expected[f"{PACKAGE}/{name}"]).hexdigest() for name in RESOURCES},
         "consoleScripts": project["scripts"], "runtimeDependencies": project["dependencies"],
@@ -178,9 +183,10 @@ def main() -> int:
     parser.add_argument("wheel", type=Path)
     parser.add_argument("sdist", type=Path)
     parser.add_argument("--source-root", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--expected-version", help="Require both artifacts to match this tag-derived version")
     args = parser.parse_args()
     try:
-        report = check_distributions(args.wheel, args.sdist, args.source_root)
+        report = check_distributions(args.wheel, args.sdist, args.source_root, args.expected_version)
     except (ValueError, KeyError, OSError) as exc:
         parser.exit(1, f"distribution check failed: {exc}\n")
     print(json.dumps(report, indent=2, sort_keys=True))

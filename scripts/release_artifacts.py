@@ -9,7 +9,6 @@ import re
 import shutil
 import subprocess
 import tempfile
-import tomllib
 from pathlib import Path
 from urllib.parse import quote
 
@@ -27,15 +26,15 @@ def sha256(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def check_tag(tag: str, source: Path) -> dict[str, str]:
+def check_tag(tag: str) -> dict[str, str]:
     from packaging.version import Version
 
-    version = tomllib.loads((source / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+    if not tag.startswith("v"):
+        raise ValueError("release tag must start with v")
+    version = tag[1:]
     parsed = Version(version)
     if str(parsed) != version or parsed.local is not None:
         raise ValueError("release version must be canonical PEP 440 without a local suffix")
-    if tag != f"v{version}":
-        raise ValueError(f"release tag {tag!r} must equal v{version}")
     return {"version": version, "prerelease": str(parsed.is_prerelease).lower()}
 
 
@@ -129,7 +128,7 @@ def prepare_pypi(
     except ImportError:  # Direct script invocation from the tagged source checkout.
         from check_distributions import check_distributions
 
-    check_tag(tag, source)
+    version = check_tag(tag)["version"]
     verify_remote_tag(repository, tag, commit)
     release = json.loads(checked_gh("api", f"repos/{repository}/releases/tags/{quote(tag, safe='')}"))
     if release["draft"] or release["tag_name"] != tag:
@@ -149,7 +148,7 @@ def prepare_pypi(
     for name in assets:
         checked_gh("release", "download", tag, "--repo", repository, "--pattern", name, "--dir", str(directory))
     checked = verify_checksums(directory)
-    report = check_distributions(directory / wheels[0], directory / sources[0], source)
+    report = check_distributions(directory / wheels[0], directory / sources[0], source, expected_version=version)
     for path in checked:
         shutil.copyfile(path, packages / path.name)
         if sha256(packages / path.name) != sha256(path):
@@ -163,7 +162,6 @@ def main() -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     tag_parser = commands.add_parser("check-tag")
     tag_parser.add_argument("tag")
-    tag_parser.add_argument("--source-root", type=Path, default=Path(__file__).resolve().parents[1])
     tag_parser.add_argument("--github-output", type=Path)
     for name in ("checksums", "verify-checksums", "publish", "prepare-pypi"):
         command = commands.add_parser(name)
@@ -180,7 +178,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         if args.command == "check-tag":
-            result = check_tag(args.tag, args.source_root)
+            result = check_tag(args.tag)
             if args.github_output:
                 with args.github_output.open("a", encoding="utf-8") as output:
                     output.writelines(f"{key}={value}\n" for key, value in result.items())

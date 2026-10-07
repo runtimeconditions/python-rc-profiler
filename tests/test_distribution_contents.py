@@ -19,10 +19,10 @@ PROJECT = tomllib.loads((SOURCE / "pyproject.toml").read_text())["project"]
 RESOURCE = "runtimeconditions_profiler/runtimeconditions.profile.v0.2.0.schema.yaml"
 
 
-def archives(tmp_path: Path, mutate=None) -> tuple[Path, Path]:
-    metadata_dir = "runtimeconditions_profiler-0.1.0.dist-info"
+def archives(tmp_path: Path, mutate=None, version="8.4.2rc1") -> tuple[Path, Path]:
+    metadata_dir = f"runtimeconditions_profiler-{version}.dist-info"
     metadata = (
-        f"Metadata-Version: 2.1\nName: {PROJECT['name']}\nVersion: {PROJECT['version']}\n"
+        f"Metadata-Version: 2.1\nName: {PROJECT['name']}\nVersion: {version}\n"
         f"Requires-Python: {PROJECT['requires-python']}\nDescription-Content-Type: text/markdown\n"
         + "".join(f"Requires-Dist: {item}\n" for item in PROJECT["dependencies"])
         + "\nDescription\n"
@@ -51,18 +51,46 @@ def archives(tmp_path: Path, mutate=None) -> tuple[Path, Path]:
     sdist = tmp_path / "profiler.tar.gz"
     with tarfile.open(sdist, "w:gz") as archive:
         for name, data in source_files.items():
-            item = tarfile.TarInfo(f"runtimeconditions_profiler-0.1.0/{name}")
+            item = tarfile.TarInfo(f"runtimeconditions_profiler-{version}/{name}")
             item.size = len(data)
             archive.addfile(item, io.BytesIO(data))
     return wheel, sdist
 
 
-def test_distribution_contents_accept_complete_archives(tmp_path: Path) -> None:
-    wheel, sdist = archives(tmp_path)
-    result = check_distributions(wheel, sdist, SOURCE)
+@pytest.mark.parametrize("version", ["0.0.1", "0.2.0", "8.4.2rc1"])
+def test_distribution_contents_accept_complete_archives(tmp_path: Path, version: str) -> None:
+    wheel, sdist = archives(tmp_path, version=version)
+    result = check_distributions(wheel, sdist, SOURCE, expected_version=version)
     assert result["status"] == "passed"
+    assert result["version"] == version
     assert set(result["resources"]) == {"schemas.json", "runtimeconditions.profile.v0.2.0.schema.yaml"}
     assert "referencing>=0.28.4" in result["runtimeDependencies"]
+
+
+def test_local_validation_reads_dynamic_version_from_artifacts(tmp_path: Path) -> None:
+    wheel, sdist = archives(tmp_path)
+    assert check_distributions(wheel, sdist, SOURCE)["version"] == "8.4.2rc1"
+
+
+@pytest.mark.parametrize("archive", ["wheel", "sdist"])
+def test_distribution_contents_reject_version_different_from_release_tag(tmp_path: Path, archive: str) -> None:
+    def mutate(wheel, sdist):
+        files = wheel if archive == "wheel" else sdist
+        path = next(name for name in files if name.endswith("/METADATA") or name == "PKG-INFO")
+        files[path] = files[path].replace(b"Version: 8.4.2rc1\n", b"Version: 9.0.0\n")
+
+    wheel, sdist = archives(tmp_path, mutate)
+    with pytest.raises(ValueError, match=f"{archive}: incorrect Version"):
+        check_distributions(wheel, sdist, SOURCE, expected_version="8.4.2rc1")
+
+
+def test_local_validation_rejects_different_wheel_and_sdist_versions(tmp_path: Path) -> None:
+    def mutate(wheel, sdist):
+        sdist["PKG-INFO"] = sdist["PKG-INFO"].replace(b"Version: 8.4.2rc1\n", b"Version: 9.0.0\n")
+
+    wheel, sdist = archives(tmp_path, mutate)
+    with pytest.raises(ValueError, match="sdist: incorrect Version"):
+        check_distributions(wheel, sdist, SOURCE)
 
 
 @pytest.mark.parametrize("archive", ["wheel", "sdist"])

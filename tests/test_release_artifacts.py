@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -21,19 +22,34 @@ def dist(tmp_path: Path) -> Path:
     return directory
 
 
-@pytest.mark.parametrize("version,prerelease", [("0.1.0", "false"), ("0.2.0rc1", "true"), ("0.2.0.post1", "false")])
-def test_tag_matches_canonical_package_version(tmp_path: Path, version: str, prerelease: str) -> None:
-    (tmp_path / "pyproject.toml").write_text(f'[project]\nversion = "{version}"\n')
-    assert release.check_tag(f"v{version}", tmp_path) == {"version": version, "prerelease": prerelease}
-    with pytest.raises(ValueError, match="must equal"):
-        release.check_tag("v9.9.9", tmp_path)
+@pytest.mark.parametrize("version,prerelease", [
+    ("0.0.1", "false"), ("0.1.0", "false"), ("9.9.9", "false"),
+    ("0.2.0rc1", "true"), ("0.2.0.post1", "false"),
+])
+def test_tag_is_the_package_version_source(version: str, prerelease: str) -> None:
+    assert release.check_tag(f"v{version}") == {"version": version, "prerelease": prerelease}
 
 
 @pytest.mark.parametrize("version", ["01.0.0", "1.0.0+local"])
-def test_tag_rejects_normalized_or_local_versions(tmp_path: Path, version: str) -> None:
-    (tmp_path / "pyproject.toml").write_text(f'[project]\nversion = "{version}"\n')
+def test_tag_rejects_normalized_or_local_versions(version: str) -> None:
     with pytest.raises(ValueError, match="canonical PEP 440"):
-        release.check_tag(f"v{version}", tmp_path)
+        release.check_tag(f"v{version}")
+
+
+@pytest.mark.parametrize("tag", ["0.0.1", "release-0.0.1", "v", "vbanana", "v1.0.0\nprerelease=false"])
+def test_tag_rejects_missing_prefix_or_invalid_versions(tag: str) -> None:
+    with pytest.raises(ValueError):
+        release.check_tag(tag)
+
+
+def test_tag_cli_emits_build_version_without_a_source_checkout(tmp_path: Path) -> None:
+    output = tmp_path / "github-output"
+    result = subprocess.run(
+        [sys.executable, str(Path(release.__file__).resolve()), "check-tag", "v0.0.1", "--github-output", str(output)],
+        cwd=tmp_path, text=True, capture_output=True, check=True,
+    )
+    assert json.loads(result.stdout) == {"version": "0.0.1", "prerelease": "false"}
+    assert output.read_text() == "version=0.0.1\nprerelease=false\n"
 
 
 def test_checksums_cover_both_exact_artifacts(dist: Path) -> None:
@@ -138,7 +154,7 @@ def test_publish_preserves_authentication_errors(monkeypatch: pytest.MonkeyPatch
 def pypi_source(tmp_path: Path) -> Path:
     source = tmp_path / "source"
     source.mkdir()
-    (source / "pyproject.toml").write_text('[project]\nversion = "0.1.0"\n')
+    (source / "pyproject.toml").write_text('[project]\ndynamic = ["version"]\n')
     return source
 
 
@@ -153,8 +169,8 @@ def test_prepare_pypi_preserves_release_bytes_and_excludes_checksums(
     packages = tmp_path / "packages"
     validations = []
 
-    def validate(wheel, sdist, source):
-        validations.append((wheel, sdist, source))
+    def validate(wheel, sdist, source, expected_version):
+        validations.append((wheel, sdist, source, expected_version))
         return {"status": "passed"}
 
     monkeypatch.setattr(check_distributions, "check_distributions", validate)
@@ -163,6 +179,7 @@ def test_prepare_pypi_preserves_release_bytes_and_excludes_checksums(
     assert all(path.read_bytes() == previous[path.name] for path in packages.iterdir())
     assert len(validations) == 1
     assert validations[0][2] == pypi_source
+    assert validations[0][3] == "0.1.0"
     assert len([call for call in calls if call[:2] == ("release", "download")]) == 3
     assert not any(call[:2] in {("release", "upload"), ("release", "create")} for call in calls)
 
@@ -218,7 +235,7 @@ def test_prepare_pypi_rejects_contents_before_staging_uploads(
 
     github(monkeypatch, dist, draft=False, previous={path.name: path.read_bytes() for path in dist.iterdir()})
 
-    def invalid(*args):
+    def invalid(*args, **kwargs):
         raise ValueError("distribution contents do not match")
 
     monkeypatch.setattr(check_distributions, "check_distributions", invalid)
