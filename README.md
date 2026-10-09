@@ -113,6 +113,21 @@ from extension URIs. URI-only network resolution without an installed binding
 package is outside the current profiler command. No step requires an end user
 to pull the `extensions` repository or point the profiler at an extension file.
 
+## Continuous integration
+
+The [test workflow](.github/workflows/test.yml) runs the complete `tests/` suite
+on every pull request and push to `main`, using Python 3.11–3.14. It also supports
+manual runs. The workflow checks out `extensions` beside the profiler so
+workspace integration and shared conformance tests can run.
+
+To run the same suite locally from the profiler checkout with the sibling
+`extensions` repository available:
+
+```sh
+python -m pip install '.[test]'
+python -m pytest -q -ra
+```
+
 ## Build and check distributions (maintainers)
 
 From the profiler source directory, use a separate build environment:

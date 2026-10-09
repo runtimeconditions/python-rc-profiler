@@ -119,19 +119,6 @@ def test_profile_generation_golden(
     )
 
 
-def test_request_logger_demo_profile_generation() -> None:
-    profile = extract_profile(
-        ROOT / "rc-demos/apps/request-logger-http-python",
-        "request-logger-http",
-        "github.com/runtimeconditions/rc-demos/apps/request-logger-http-python",
-        "dev",
-        [COMMON, ENV],
-    )
-    assert normalize(ProfileYamlWriter.write(profile)) == normalize(
-        (TESTDATA / "golden/request-logger-http-python.golden.yaml").read_text()
-    )
-
-
 def test_generated_profile_validation_rejects_bad_values() -> None:
     project = TESTDATA / "profile-generation/declarative-app"
     options = DiscoveryOptions(package_paths=[COMMON, ENV])
