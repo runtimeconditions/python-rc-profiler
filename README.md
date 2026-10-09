@@ -92,20 +92,20 @@ mapping workflow.
 
 ## Extension IDs and remote resolution
 
-Each profile extension reference carries the required `id` and `version` fields,
-matching `metadata.id` and `metadata.version` in the extension definition:
+Each Profile `extensions` item is a string containing the extension's required
+`metadata.id`. When `metadata.version` is present, the profiler appends it after
+a colon:
 
 ```yaml
 extensions:
-  - id: https://extensions.example.com/runtimeconditions/jobs
-    version: 1.2.3
+  - https://extensions.example.com/runtimeconditions/jobs:1.2.3
 ```
 
-IDs SHOULD use a resolver-supported format, such as a file URI or OCI archive
-reference, but URI syntax is not required. Versions are exact strings; neither
-field is inferred from the other. The Python distribution name used by `pip`
-is separate from this extension identity. Profile consumers resolve the exact
-pairs and their transitive dependencies through their configured resolver.
+`metadata.id` is required and `metadata.version` is optional. Profile references
+may be bare IDs or append any version string after a colon. The Python
+distribution name used by `pip` is separate from this extension identity.
+Profile consumers resolve the declared references and their transitive
+dependencies through their configured resolver.
 
 During **profile generation**, this CLI validates the definitions packaged in
 the installed binding distributions. It does not fetch definitions directly
@@ -134,7 +134,7 @@ and rejects missing resources, stale runtime files, and build output in the
 source archive. Run it against a fresh `dist` directory containing one release.
 
 Both distributions contain the CLI implementation, the four binding validation
-schemas in `schemas.json`, and the pinned v0.3.0 core profile schema. Runtime
+schemas in `schemas.json`, and the pinned v0.4.0 core profile schema. Runtime
 dependencies are declared in `pyproject.toml`; generated bindings supply their
 own extension definitions. The source archive also includes the distribution
 checker, tests, and local test fixtures. This maintainer build needs no sibling

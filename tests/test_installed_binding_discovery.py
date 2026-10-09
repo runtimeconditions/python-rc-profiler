@@ -749,7 +749,7 @@ def test_transitive_marker_reexport_and_scoped_interface_are_static(
         "kind": "worker", "command": "sample", "interface": {"type": "process"},
     }
     profile = GeneratedProfileValidator(bindings).build(extracted, "sample", "example/sample", "1")
-    assert profile["extensions"] == [{"id": item, "version": "1.0.0"} for item in sorted((leaf_id, middle_id, root_id))]
+    assert profile["extensions"] == [f"{item}:1.0.0" for item in sorted((leaf_id, middle_id, root_id))]
 
     middle.manifest["importedMarkerContracts"][0]["providerPackage"] = "root_binding"
     with pytest.raises(RuntimeConditionsError, match="provider cycle"):
@@ -817,7 +817,7 @@ def test_generated_conformance_conditions_pass_complete_semantic_validation(
             "kind": "service", "interface": {"type": "http", "endpoint": "sample"},
             "region": "sample",
         }]
-    assert profile["extensions"] == [reference_object(parse_identifier(model["rootExtension"]))]
+    assert profile["extensions"] == ["https://example.test/root:1.0.0"]
 
 
 @pytest.mark.parametrize(
@@ -867,7 +867,7 @@ def test_semantic_validator_emits_direct_ids_and_uses_transitive_schema_closure(
         "https://example.test/base:1.0.0", "https://example.test/addon:1.0.0",
     )
     profile = GeneratedProfileValidator(bindings).build((candidate,), "sample", "example/sample", "1")
-    assert profile["extensions"] == [{"id": item, "version": "1.0.0"} for item in ["https://example.test/addon:1.0.0", "https://example.test/base:1.0.0"]]
+    assert profile["extensions"] == [f"{item}:1.0.0" for item in ["https://example.test/addon:1.0.0", "https://example.test/base:1.0.0"]]
     assert "https://example.test/middle:1.0.0" not in profile["extensions"]
 
     addon.extension["spec"]["schemas"][0]["schema"]["properties"]["extra"]["const"] = "disabled"
@@ -957,7 +957,7 @@ def test_cli_writes_validated_profile_and_preserves_existing_output_on_failure(
     ]
     assert cli.main(args) == 0
     profile = yaml.safe_load(output.read_text())
-    assert profile["extensions"] == [{"id": item, "version": "1.0.0"} for item in ["https://example.test/base:1.0.0"]]
+    assert profile["extensions"] == ["https://example.test/base:1.0.0:1.0.0"]
     assert profile["conditions"] == [{"kind": "service", "interface": {"type": "http"}}]
     assert capsys.readouterr().out == ""
 

@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from ..constants import API_VERSION
-from ..extension.identity import parse_identifier, reference_object
+from ..extension.identity import parse_identifier, profile_reference
 from ..errors import RuntimeConditionsError
 from ..manifest.mapping import find_option, simple_name, strip_package_class
 from ..models import DiscoveryResult, ProfileOptions, SymbolMapping
@@ -52,7 +52,7 @@ class ProfileExtractor:
             sdk_conditions.extend(direct_conditions)
             sdk_extensions.extend(direct_extensions)
         for extension in sdk_extensions:
-            add_unique(profile["extensions"], reference_object(extension))
+            add_unique(profile["extensions"], profile_reference(extension))
         for condition in sdk_conditions:
             if condition not in profile["conditions"]:
                 profile["conditions"].append(condition)
@@ -422,7 +422,7 @@ class PythonExtractionScanner:
         resolved: set[tuple[str, str]] = set()
         for extension in self.used_extensions:
             add_extension_closure(extension, dependencies, resolved)
-        return [reference_object(ref) for ref in sorted(resolved)]
+        return [profile_reference(ref) for ref in sorted(resolved)]
 
 
 def remove_empty_configuration(condition: dict[str, Any]) -> None:

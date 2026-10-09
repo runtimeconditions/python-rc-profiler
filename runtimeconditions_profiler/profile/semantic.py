@@ -21,16 +21,16 @@ from referencing.jsonschema import DRAFT202012
 
 from ..constants import API_VERSION
 from ..errors import RuntimeConditionsError
-from ..extension.identity import parse_identifier, reference_object
+from ..extension.identity import parse_identifier, profile_reference
 from ..project.verify import VerifiedBindingPackage, VerifiedBindingSet
 from .generated import ExtractedCondition
 
 
-CORE_RESOURCE = "runtimeconditions.profile.v0.3.0.schema.yaml"
-CORE_ID = "https://runtimeconditions.io/schemas/profile/0.3.0/runtimeconditions.profile.schema.yaml"
-CORE_VERSION = "0.3.0"
-CORE_SEMANTIC_SHA256 = "83be993b93f81561e405695143f873ef34af65297f32bc2266b6534444da1466"
-CORE_SOURCE_SHA256 = "9f09d24054919e992f9c209cbd8098e2f0de382132fb06dbc3207e4e12c60e35"
+CORE_RESOURCE = "runtimeconditions.profile.v0.4.0.schema.yaml"
+CORE_ID = "https://runtimeconditions.io/schemas/profile/0.4.0/runtimeconditions.profile.schema.yaml"
+CORE_VERSION = "0.4.0"
+CORE_SEMANTIC_SHA256 = "ed447dccefd7507d905b0b6177b1386d8ee96a1d053b731939a9a7ae973d5af1"
+CORE_SOURCE_SHA256 = "96d430c7936fcf7334aa9613f63bb306592e07cf56fe4154af57933d2c1480e6"
 CORE_FIELDS = frozenset({"kind", "interface", "name", "optional"})
 
 
@@ -112,7 +112,7 @@ class GeneratedProfileValidator:
             "kind": "RuntimeConditionsProfile",
             "metadata": {"name": name},
             "workload": {"uri": workload_uri, "version": workload_version},
-            "extensions": [reference_object(ref) for ref in sorted(direct)],
+            "extensions": [profile_reference(ref) for ref in sorted(direct)],
             "conditions": [item.condition for item in extracted],
         }
         self._validate_core(profile, extracted)
@@ -123,7 +123,7 @@ class GeneratedProfileValidator:
         direct.update(added)
         closure = self._closure(direct)
         self._validate_model_closures(direct, closure)
-        profile["extensions"] = [reference_object(ref) for ref in sorted(direct)]
+        profile["extensions"] = [profile_reference(ref) for ref in sorted(direct)]
         self._validate_core(profile, extracted)
         self._validate_extension_schemas(extracted, closure)
         for index, item in enumerate(extracted):

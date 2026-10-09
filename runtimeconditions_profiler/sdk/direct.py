@@ -58,18 +58,22 @@ def load_explicit_sdk_artifacts(
                 raise RuntimeConditionsError(f"expected {EXTENSION_KIND}")
             metadata = document.get("metadata", {})
             extension_id = definition_identifier(metadata)
-            version = metadata.get("version")
+            version = metadata.get("version", "")
             digest = metadata.get("semanticSha256")
-            if not all(isinstance(item, str) and item for item in (extension_id, version, digest)):
-                raise RuntimeConditionsError("extension metadata requires id, version, and semanticSha256")
+            if not isinstance(version, str) or ("version" in metadata and not version):
+                raise RuntimeConditionsError("extension metadata version, when present, must be a non-empty string")
+            if digest is not None and (not isinstance(digest, str) or not digest):
+                raise RuntimeConditionsError("extension metadata semanticSha256, when present, must be a non-empty string")
+            if not version and not digest:
+                raise RuntimeConditionsError("extension metadata requires either version or semanticSha256")
             actual = _semantic_sha256(document.get("spec", {}))
-            if actual != digest:
+            if digest is not None and actual != digest:
                 raise RuntimeConditionsError(f"extension semantic digest is {actual}, not {digest}")
             extensions.append(
                 SDKExtensionArtifact(
                     id=extension_id,
                     version=version,
-                    semantic_sha256=digest,
+                    semantic_sha256=actual,
                     path=path,
                     definition=parse_extension_definition(document, extension_id, path.as_uri()),
                     document=document,

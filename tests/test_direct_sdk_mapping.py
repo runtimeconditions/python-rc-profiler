@@ -30,7 +30,7 @@ def extract(project: Path) -> dict:
 def test_direct_put_object_omits_unknown_optional_bucket_name() -> None:
     profile = extract(S3_APPS / "direct-client")
     assert profile["extensions"] == [
-        {"id": "https://runtimeconditions.io/aws/aws-s3", "version": "0.2.0"}
+        "https://runtimeconditions.io/aws/aws-s3:0.2.0"
     ]
     assert profile["conditions"] == [
         {

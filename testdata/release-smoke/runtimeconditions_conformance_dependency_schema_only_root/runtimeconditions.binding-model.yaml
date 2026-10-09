@@ -7,9 +7,9 @@ metadata:
     version: 0.1.0
     sha256: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
 coreProfileSchema:
-  id: https://runtimeconditions.io/schemas/profile/0.3.0/runtimeconditions.profile.schema.yaml
-  version: 0.3.0
-  semanticSha256: 83be993b93f81561e405695143f873ef34af65297f32bc2266b6534444da1466
+  id: https://runtimeconditions.io/schemas/profile/0.4.0/runtimeconditions.profile.schema.yaml
+  version: 0.4.0
+  semanticSha256: ed447dccefd7507d905b0b6177b1386d8ee96a1d053b731939a9a7ae973d5af1
 rootExtension:
   id: https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0
   version: 1.0.0

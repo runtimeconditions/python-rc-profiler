@@ -21,9 +21,9 @@ def test_definition_identity_reads_id_and_version() -> None:
     [
         {"id": "jobs", "version": ""},
         {"id": "", "version": "1.2.3"},
-        {"id": "jobs"},
+        "",
         {"uri": "https://extensions.example.test/acme/jobs", "version": "1.2.3"},
-        "https://extensions.example.test/acme/jobs:1.2.3?channel=latest",
+        "https://extensions.example.test/acme/jobs:",
     ],
 )
 def test_invalid_extension_identity_is_rejected(identifier: object) -> None:

@@ -25,7 +25,7 @@ else:
     from release_artifacts import sha256, verify_checksums
 
 
-RESOURCES = ("schemas.json", "runtimeconditions.profile.v0.3.0.schema.yaml")
+RESOURCES = ("schemas.json", "runtimeconditions.profile.v0.4.0.schema.yaml")
 ROOT_ID = "https://runtimeconditions.io/conformance/dependency-schema-only-root:1.0.0"
 DEPENDENCY_ID = "https://runtimeconditions.io/conformance/dependency-schema-only-dependency:1.0.0"
 PACKAGE_PREFIX = "runtimeconditions_conformance_dependency_schema_only_"
@@ -128,13 +128,13 @@ from runtimeconditions_profiler.project.verify import _schemas
 from runtimeconditions_profiler.profile.semantic import _core_schema
 if not Path(runtimeconditions_profiler.__file__).is_relative_to(Path(sys.prefix)):
     raise RuntimeError("profiler did not load from the clean environment")
-if len(_schemas()) != 4 or _core_schema()["x-runtimeconditions-version"] != "0.3.0":
+if len(_schemas()) != 4 or _core_schema()["x-runtimeconditions-version"] != "0.4.0":
     raise RuntimeError("installed schema resources are invalid")
 print(json.dumps({
     "version": metadata.version("runtimeconditions-profiler"),
     "resources": {
         name: hashlib.sha256(resources.files("runtimeconditions_profiler").joinpath(name).read_bytes()).hexdigest()
-        for name in ("schemas.json", "runtimeconditions.profile.v0.3.0.schema.yaml")
+        for name in ("schemas.json", "runtimeconditions.profile.v0.4.0.schema.yaml")
     },
 }))
 '''
@@ -201,7 +201,7 @@ def smoke(directory: Path, fixtures: Path, report: Path, expected_version: str |
             run(command, project, environment, log)
             expected = {
                 "apiVersion": "runtimeconditions.io/v1alpha1", "kind": "RuntimeConditionsProfile", "metadata": {"name": "release-smoke"},
-                "workload": {"uri": "https://example.test/workload", "version": "1.0.0"}, "extensions": [{"id": ROOT_ID, "version": "1.0.0"}],
+                "workload": {"uri": "https://example.test/workload", "version": "1.0.0"}, "extensions": [f"{ROOT_ID}:1.0.0"],
                 "conditions": [{"kind": "job", "interface": {"type": "process"}, "command": "sample"}],
             }
             if yaml.safe_load(output.read_bytes()) != expected:
