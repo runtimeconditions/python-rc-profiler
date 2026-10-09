@@ -39,7 +39,6 @@ def archives(tmp_path: Path, mutate=None, version="8.4.2rc1") -> tuple[Path, Pat
     extra_files = [SOURCE / name for name in ("README.md", "pyproject.toml", "MANIFEST.in")]
     extra_files.extend((SOURCE / "scripts").glob("*.py"))
     extra_files.extend((SOURCE / "requirements").glob("*.txt"))
-    extra_files.extend(path for path in (SOURCE / "testdata/release-smoke").rglob("*") if path.is_file() and "__pycache__" not in path.parts)
     for path in extra_files:
         source_files[path.relative_to(SOURCE).as_posix()] = path.read_bytes()
     if mutate:

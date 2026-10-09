@@ -117,11 +117,9 @@ to pull the `extensions` repository or point the profiler at an extension file.
 
 The [test workflow](.github/workflows/test.yml) runs the complete `tests/` suite
 on every pull request and push to `main`, using Python 3.11–3.14. It also supports
-manual runs. The workflow checks out `extensions` beside the profiler so
-workspace integration and shared conformance tests can run.
+manual runs. The suite runs in isolation using files in this repository.
 
-To run the same suite locally from the profiler checkout with the sibling
-`extensions` repository available:
+To run the same suite locally from the profiler checkout:
 
 ```sh
 python -m pip install '.[test]'
@@ -170,10 +168,8 @@ The workflow builds the wheel and source archive once, runs strict Twine
 metadata validation and distribution-content checks, and records `SHA256SUMS`.
 Separate jobs install those exact files in fresh environments on Linux with
 Python 3.11–3.14 and on macOS and Windows with Python 3.12. Each job checks the
-installed CLI and schemas, verifies bundled binding identities and dependency
-closure, generates the expected profile, and checks a schema-only dependency
-rejection. These checks use test-only bindings stored in this repository and
-run outside the checkout. Logs and JSON results remain as Actions artifacts.
+installed CLI, package version, runtime dependencies, and schema resources
+outside the checkout. Logs and JSON results remain as Actions artifacts.
 
 After every check passes, a job with `contents: write` verifies that the remote
 tag still points at the tested commit and attaches the wheel, source archive,

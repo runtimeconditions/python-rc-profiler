@@ -11,6 +11,8 @@ def parse_identifier(reference: object) -> tuple[str, str]:
         marker = reference.rfind(":")
         scheme_end = reference.find("://")
         if marker > 0 and marker > scheme_end + 2 and marker > reference.rfind("/"):
+            if marker == len(reference) - 1:
+                raise RuntimeConditionsError("extension reference version suffix must be non-empty")
             return reference[:marker], reference[marker + 1 :]
         return reference, ""
     if not isinstance(reference, dict):

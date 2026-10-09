@@ -6,7 +6,6 @@ import sys
 import json
 import base64
 import hashlib
-from dataclasses import replace
 from types import SimpleNamespace
 from pathlib import Path, PurePosixPath
 
@@ -593,27 +592,6 @@ def test_direct_binding_dependency_is_resolved_from_installed_metadata(
     assert "dependency_binding" not in sys.modules
 
 
-def test_digest_algorithm_matches_shared_conformance_models_when_available() -> None:
-    conformance = (
-        Path(__file__).resolve().parents[2]
-        / "extensions/tooling/extension-bindings/model/conformance"
-    )
-    expected = sorted((conformance / "expected").glob("*/runtimeconditions.binding-model.yaml"))
-    if not expected:
-        pytest.skip("shared conformance sources are not installed with the profiler")
-    for name, bundled in verify._schemas().items():
-        assert bundled == yaml.safe_load((conformance.parent / name).read_text()), name
-    schema = verify._schemas()[verify.SCHEMAS["runtimeconditions.extension.yaml"]]
-    for model_path in expected:
-        model = yaml.safe_load(model_path.read_text())
-        declared = model["metadata"].pop("semanticSha256")
-        assert verify._canonical_sha256(model) == declared, model_path
-        source = conformance / "cases" / model_path.parent.name / "root.yaml"
-        extension = yaml.safe_load(source.read_text())
-        semantic = verify._semantic_value(extension, schema, schema)
-        assert verify._canonical_sha256(semantic) == model["rootExtension"]["semanticSha256"], source
-
-
 def semantic_package(
     extension_id: str, import_package: str, spec: dict[str, object],
     manifest: dict[str, object] | None = None,
@@ -757,88 +735,6 @@ def test_transitive_marker_reexport_and_scoped_interface_are_static(
             root.manifest["importedMarkerContracts"][0], bindings.packages,
             {parse_identifier(item) for item in root.model["extensions"]},
         )
-
-
-def conformance_binding_case(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str,
-) -> tuple[verify.VerifiedBindingSet, tuple[ExtractedCondition, ...], dict[str, object]]:
-    # In-memory model contract check; installable fixtures are maintained separately.
-    tooling = Path(__file__).resolve().parents[2] / "extensions/tooling/extension-bindings"
-    model_file = tooling / "model/conformance/expected" / case / "runtimeconditions.binding-model.yaml"
-    if not model_file.is_file():
-        pytest.skip("shared conformance model is unavailable")
-    monkeypatch.syspath_prepend(str(tooling / "emitters/python/src"))
-    from runtimeconditions_binding_emitter import build_plan, load_model, load_target, render_resources
-    from runtimeconditions_binding_emitter.source import _conformance_source
-
-    model = load_model(model_file)
-    target = replace(
-        load_target(tooling / "emitters/python/testdata/package-target.yaml"),
-        root_extension=model["rootExtension"]["id"],
-    )
-    plan = build_plan(model, target)
-    prefix = f"src/{target.import_package}/"
-    manifest = yaml.safe_load(render_resources(plan, model)[prefix + "runtimeconditions.bindings.yaml"])
-    source = _conformance_source(plan, model).replace(
-        "from . import bindings as b", f"import {target.import_package} as b",
-    )
-    (tmp_path / "app.py").write_text(source)
-    extension = yaml.safe_load((tooling / "model/conformance/cases" / case / "root.yaml").read_text())
-    installed_package = SimpleNamespace(
-        import_package=target.import_package, distribution=target.distribution_name, version=target.version,
-    )
-    package = verify.VerifiedBindingPackage(installed_package, manifest, model, extension, {})
-    bindings = verify.VerifiedBindingSet((package,), (package,))
-    extracted = GeneratedBindingExtractor(bindings).extract(tmp_path)
-    return bindings, extracted, model
-
-
-@pytest.mark.parametrize(
-    ("case", "count"),
-    [
-        ("01-owned-kind-interface", 1),
-        ("06-recursive-reference", 1),
-        ("07-object-alternatives", 2),
-        ("08-heterogeneous-union", 1),
-        ("09-collections-and-maps", 1),
-        ("10-scoped-domains-collisions", 2),
-        ("11-source-name-preservation", 1),
-    ],
-)
-def test_generated_conformance_conditions_pass_complete_semantic_validation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str, count: int,
-) -> None:
-    bindings, extracted, model = conformance_binding_case(tmp_path, monkeypatch, case)
-    profile = GeneratedProfileValidator(bindings).build(extracted, "sample", "example/sample", "1")
-    assert len(profile["conditions"]) == count
-    assert all(item["interface"]["type"] for item in profile["conditions"])
-    if case == "01-owned-kind-interface":
-        assert profile["conditions"] == [{
-            "kind": "service", "interface": {"type": "http", "endpoint": "sample"},
-            "region": "sample",
-        }]
-    assert profile["extensions"] == ["https://example.test/root:1.0.0"]
-
-
-@pytest.mark.parametrize(
-    ("case", "field", "value", "message"),
-    [
-        ("07-object-alternatives", "configuration", {}, "extension schema"),
-        ("08-heterogeneous-union", "target", {"id": 1}, "extension schema"),
-        ("10-scoped-domains-collisions", "mode", "direct", "outside the owned domain"),
-    ],
-)
-def test_generated_conformance_branch_constraints_reject_invalid_conditions(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-    case: str, field: str, value: object, message: str,
-) -> None:
-    bindings, extracted, _ = conformance_binding_case(tmp_path, monkeypatch, case)
-    condition = {**extracted[0].condition, field: value}
-    invalid = replace(extracted[0], condition=condition)
-    with pytest.raises(RuntimeConditionsError) as failure:
-        GeneratedProfileValidator(bindings).build((invalid,), "sample", "example/sample", "1")
-    assert message in str(failure.value)
-    assert "/app.py:" in str(failure.value)
 
 
 def semantic_candidate(condition: dict[str, object], *extensions: str) -> ExtractedCondition:

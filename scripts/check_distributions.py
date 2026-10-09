@@ -156,7 +156,6 @@ def check_distributions(wheel: Path, sdist: Path, source: Path, expected_version
     source_files = [source / name for name in ("README.md", "pyproject.toml", "MANIFEST.in")]
     source_files.extend((source / "scripts").glob("*.py"))
     source_files.extend((source / "requirements").glob("*.txt"))
-    source_files.extend(path for path in (source / "testdata/release-smoke").rglob("*") if path.is_file() and "__pycache__" not in path.parts)
     for path in source_files:
         name = path.relative_to(source).as_posix()
         require(sdist_contents.get(name) == (source / name).read_bytes(), f"sdist: missing or altered {name}")

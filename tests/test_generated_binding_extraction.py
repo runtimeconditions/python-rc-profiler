@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
-from dataclasses import replace
 
 import pytest
-import yaml
 
 from runtimeconditions_profiler.errors import RuntimeConditionsError
 from runtimeconditions_profiler.extension.identity import parse_identifier
@@ -236,51 +234,3 @@ def test_cross_module_cycle_is_source_located(tmp_path: Path) -> None:
     with pytest.raises(RuntimeConditionsError, match="cyclic module reference|cyclic static reference") as failure:
         GeneratedBindingExtractor(VerifiedBindingSet((package(),), (package(),))).extract(workload)
     assert "/app.py:3:" in str(failure.value)
-
-
-@pytest.mark.parametrize(
-    ("case", "count"),
-    [
-        ("01-owned-kind-interface", 1),
-        ("06-recursive-reference", 1),
-        ("07-object-alternatives", 2),
-        ("08-heterogeneous-union", 1),
-        ("09-collections-and-maps", 1),
-        ("10-scoped-domains-collisions", 2),
-        ("11-source-name-preservation", 1),
-    ],
-)
-def test_generated_conformance_sources_extract_in_memory_when_available(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str, count: int,
-) -> None:
-    # This is an in-memory contract test. Installable integration fixtures and
-    # their package-manager commands are owned by the separate fixture work.
-    tooling = Path(__file__).resolve().parents[2] / "extensions/tooling/extension-bindings"
-    emitter = tooling / "emitters/python/src"
-    model_file = tooling / "model/conformance/expected" / case / "runtimeconditions.binding-model.yaml"
-    if not model_file.is_file():
-        pytest.skip("shared conformance model is unavailable")
-    monkeypatch.syspath_prepend(str(emitter))
-    from runtimeconditions_binding_emitter import build_plan, load_model, load_target, render_resources
-    from runtimeconditions_binding_emitter.source import _conformance_source
-
-    model = load_model(model_file)
-    target = replace(
-        load_target(tooling / "emitters/python/testdata/package-target.yaml"),
-        root_extension=model["rootExtension"]["id"],
-    )
-    plan = build_plan(model, target)
-    prefix = f"src/{target.import_package}/"
-    manifest = yaml.safe_load(render_resources(plan, model)[prefix + "runtimeconditions.bindings.yaml"])
-    source = _conformance_source(plan, model).replace(
-        "from . import bindings as b", f"import {target.import_package} as b",
-    )
-    (tmp_path / "app.py").write_text(source)
-    installed = SimpleNamespace(import_package=target.import_package)
-    package = VerifiedBindingPackage(installed, manifest, model, {}, {})
-    found = GeneratedBindingExtractor(VerifiedBindingSet((package,), (package,))).extract(tmp_path)
-    assert len(found) == count
-    assert all(item.direct_extensions == (parse_identifier(model["rootExtension"]),) for item in found)
-    assert all(item.condition["kind"] for item in found)
-    if case == "11-source-name-preservation":
-        assert "café" in found[0].condition

@@ -78,8 +78,7 @@ jobs:
         run: |
           wheel=(dist/*.whl)
           python -m pip install "${wheel[0]}[test]"
-          # Optional emitter conformance tests require a separate tooling checkout.
-          python -m pytest -q -k 'not when_available and not generated_conformance' tests/test_distribution_contents.py tests/test_extension_identity.py tests/test_generated_binding_extraction.py tests/test_installed_binding_discovery.py tests/test_release_artifacts.py tests/test_release_smoke.py
+          python -m pytest -q
       - name: Preserve exact release distributions
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -123,8 +122,6 @@ jobs:
         with:
           name: release-distributions
           path: dist
-      - name: Install smoke harness dependency
-        run: python -m pip install --disable-pip-version-check PyYAML==6.0.3
       - name: Install and smoke-check both exact artifacts
         shell: bash
         env:
