@@ -497,6 +497,16 @@ def _verify_closure(
     name = package.installed.distribution
     model_entries = package.model["extensions"]
     lock_entries = package.release["dependencyLock"]["extensions"]
+    # Dependencies, edges and package dependencies name an extension by its full id
+    # string. Look its version up in the closure so it keys the same way as the
+    # closure entries, which carry id and version separately.
+    versions = {entry["id"]: entry.get("version", "") for entry in model_entries}
+
+    def reference(value: Any) -> tuple[str, str]:
+        if isinstance(value, str) and value in versions:
+            return value, versions[value]
+        return parse_identifier(value)
+
     models = {parse_identifier(entry): entry for entry in model_entries}
     locks = {parse_identifier(entry): entry for entry in lock_entries}
     if len(models) != len(model_entries) or len(locks) != len(lock_entries) or set(models) != set(locks):
@@ -506,12 +516,12 @@ def _verify_closure(
         key: value for key, value in models[root_id].items() if key != "dependencies"
     } != package.model["rootExtension"]:
         raise RuntimeConditionsError(f"{name}: model root is absent from extension closure")
-    edges = {(parse_identifier(entry["from"]), parse_identifier(entry["to"])) for entry in package.model.get("dependencyEdges", [])}
-    derived_edges = {(parse_identifier(entry), parse_identifier(dep)) for entry in model_entries for dep in entry.get("dependencies", [])}
+    edges = {(reference(entry["from"]), reference(entry["to"])) for entry in package.model.get("dependencyEdges", [])}
+    derived_edges = {(parse_identifier(entry), reference(dep)) for entry in model_entries for dep in entry.get("dependencies", [])}
     if len(edges) != len(package.model.get("dependencyEdges", [])) or edges != derived_edges:
         raise RuntimeConditionsError(f"{name}: model dependency edges do not match extension closure")
     for entry in model_entries:
-        dependencies = [parse_identifier(dep) for dep in entry.get("dependencies", [])]
+        dependencies = [reference(dep) for dep in entry.get("dependencies", [])]
         if len(set(dependencies)) != len(dependencies):
             raise RuntimeConditionsError(f"{name}: duplicate extension dependency for {entry['id']}")
     reachable: set[tuple[str, str]] = set()
@@ -523,7 +533,7 @@ def _verify_closure(
         if extension_id not in models:
             raise RuntimeConditionsError(f"{name}: unresolved model dependency {extension_id}")
         reachable.add(extension_id)
-        pending.extend(parse_identifier(dep) for dep in models[extension_id].get("dependencies", []))
+        pending.extend(reference(dep) for dep in models[extension_id].get("dependencies", []))
     if reachable != set(models):
         raise RuntimeConditionsError(f"{name}: model closure has extensions unreachable from its root")
     for extension_id, entry in models.items():
@@ -534,9 +544,9 @@ def _verify_closure(
         expected = owner.model["rootExtension"]
         if entry["semanticSha256"] != expected["semanticSha256"] or entry.get("version") != expected.get("version"):
             raise RuntimeConditionsError(f"{name}: extension closure identity mismatch for {extension_id}")
-        if {parse_identifier(dep) for dep in entry.get("dependencies", [])} != {parse_identifier(dep) for dep in owner.extension["spec"].get("dependencies", [])}:
+        if {reference(dep) for dep in entry.get("dependencies", [])} != {reference(dep) for dep in owner.extension["spec"].get("dependencies", [])}:
             raise RuntimeConditionsError(f"{name}: extension closure edges differ from packaged definition for {extension_id}")
-        if lock["semanticSha256"] != entry["semanticSha256"] or lock.get("version") != entry.get("version") or {parse_identifier(dep) for dep in lock.get("dependencies", [])} != {parse_identifier(dep) for dep in entry.get("dependencies", [])}:
+        if lock["semanticSha256"] != entry["semanticSha256"] or lock.get("version") != entry.get("version") or {reference(dep) for dep in lock.get("dependencies", [])} != {reference(dep) for dep in entry.get("dependencies", [])}:
             raise RuntimeConditionsError(f"{name}: dependency lock identity or edges mismatch for {extension_id}")
         if lock["sourceSha256"] != _sha256(owner.installed.resources["runtimeconditions.extension.yaml"]):
             raise RuntimeConditionsError(f"{name}: dependency lock source digest mismatch for {extension_id}")
@@ -546,10 +556,10 @@ def _verify_closure(
     # At profile time, verify the installed RECORD and resource digests instead.
     if len({canonicalize_name(item["coordinate"]) for item in dependencies}) != len(dependencies):
         raise RuntimeConditionsError(f"{name}: duplicate binding package dependency")
-    if len({parse_identifier(item["extension"]) for item in dependencies}) != len(dependencies):
+    if len({reference(item["extension"]) for item in dependencies}) != len(dependencies):
         raise RuntimeConditionsError(f"{name}: duplicate binding extension dependency")
-    expected_extensions = {parse_identifier(dep) for dep in models[root_id].get("dependencies", [])}
-    if {parse_identifier(item["extension"]) for item in dependencies} != expected_extensions:
+    expected_extensions = {reference(dep) for dep in models[root_id].get("dependencies", [])}
+    if {reference(item["extension"]) for item in dependencies} != expected_extensions:
         raise RuntimeConditionsError(f"{name}: direct package dependencies do not match root extension edges")
     distribution = metadata.distribution(name)
     try:
@@ -562,7 +572,7 @@ def _verify_closure(
     for item in dependencies:
         dep_key = canonicalize_name(item["coordinate"])
         dependency = all_packages.get(dep_key)
-        if dependency is None or dependency.installed.import_package != item["name"] or parse_identifier(dependency.model["rootExtension"]) != parse_identifier(item["extension"]):
+        if dependency is None or dependency.installed.import_package != item["name"] or parse_identifier(dependency.model["rootExtension"]) != reference(item["extension"]):
             raise RuntimeConditionsError(f"{name}: binding dependency {item['coordinate']} identity mismatch")
         tested = item["testedVersion"]
         interval = item["compatibleVersionRange"]
