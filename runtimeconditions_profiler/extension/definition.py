@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..models import ExtensionDefinition
-from .identity import parse_identifier
+from .identity import parse_identifier, resolve_reference
 from ..util import as_list, as_map, parse_plain_string_list, scalar
 
 
@@ -64,7 +64,7 @@ def resolve_definitions(extension_id: tuple[str, str], definitions_by_id: dict[t
         if definition is None:
             return
         for dependency in definition.dependencies:
-            visit(dependency)
+            visit(resolve_reference(dependency, definitions_by_id))
         resolved.append(definition)
 
     visit(extension_id)
@@ -86,7 +86,7 @@ def dependency_cycle_errors(definitions_by_id: dict[tuple[str, str], ExtensionDe
         definition = definitions_by_id.get(extension_id)
         if definition is not None:
             for dependency in definition.dependencies:
-                visit(dependency)
+                visit(resolve_reference(dependency, definitions_by_id))
         visiting.remove(extension_id)
         visited.add(extension_id)
 

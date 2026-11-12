@@ -12,6 +12,7 @@ from ..util import as_map, scalar, uri_to_path
 from ..yamlio import Yaml
 from .identity import parse_identifier
 from .definition import dependency_cycle_errors, parse_extension_definition
+from .identity import resolve_reference
 from .manifest_validator import ManifestVocabularyValidator
 
 
@@ -123,7 +124,7 @@ class ArtifactValidator:
 
         for artifact in artifacts:
             for dependency in artifact.dependencies:
-                if dependency not in definitions_by_id:
+                if resolve_reference(dependency, definitions_by_id) not in definitions_by_id:
                     artifact.add(
                         "extension-dependency",
                         artifact.extension_definition_uri or artifact.artifact.manifest_uri,

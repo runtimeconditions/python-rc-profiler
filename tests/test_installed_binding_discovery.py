@@ -618,6 +618,7 @@ def semantic_package(
 
 def semantic_set(*packages: verify.VerifiedBindingPackage) -> verify.VerifiedBindingSet:
     by_id = {parse_identifier(item.model["rootExtension"]): item for item in packages}
+    versions = {identifier: version for identifier, version in by_id}
     for package in packages:
         seen: set[str] = set()
         pending = [parse_identifier(package.model["rootExtension"])]
@@ -626,7 +627,10 @@ def semantic_set(*packages: verify.VerifiedBindingPackage) -> verify.VerifiedBin
             if current in seen or current not in by_id:
                 continue
             seen.add(current)
-            pending.extend(parse_identifier(ref) for ref in by_id[current].extension["spec"].get("dependencies", []))
+            pending.extend(
+                (ref, versions[ref]) if isinstance(ref, str) and ref in versions else parse_identifier(ref)
+                for ref in by_id[current].extension["spec"].get("dependencies", [])
+            )
         package.model["extensions"] = [by_id[item].model["rootExtension"] for item in sorted(seen)]
     return verify.VerifiedBindingSet(tuple(packages), tuple(packages))
 
@@ -688,13 +692,13 @@ def test_transitive_marker_reexport_and_scoped_interface_are_static(
         "declarations": [declaration], "importedMarkerContracts": [], "rootBindings": [], "types": [],
     })
     middle = semantic_package(middle_id, "middle_binding", {
-        "dependencies": [{"id": leaf_id, "version": "1.0.0"}], "interfaceTypes": [{"name": "process", "targetKind": "worker"}],
+        "dependencies": [leaf_id], "interfaceTypes": [{"name": "process", "targetKind": "worker"}],
     }, {
         "declarations": [], "importedMarkerContracts": [{**contract, "providerPackage": "leaf_binding"}],
         "rootBindings": [], "types": [],
     })
     root = semantic_package(root_id, "root_binding", {
-        "dependencies": [{"id": middle_id, "version": "1.0.0"}],
+        "dependencies": [middle_id],
         "conditionFields": [{"name": "command", "appliesToKinds": ["worker"],
                              "appliesToInterfaceTypes": ["process"]}],
     }, {

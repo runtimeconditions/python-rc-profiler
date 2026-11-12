@@ -70,3 +70,38 @@ def test_validator_resolves_a_short_extension_reference() -> None:
     profile = {"apiVersion": "runtimeconditions.io/v1alpha1", "kind": "RuntimeConditionsProfile", "extensions": [f"{SHORT}:v1alpha1"], "conditions": []}
     messages = [item.message for item in ProfileValidator().validate(profile, discovery)]
     assert not [m for m in messages if "missing extension definition" in m]
+
+
+BASE = "https://example.test/rc/base/v1/runtimeconditions.extension.yaml"
+TOP = "https://example.test/rc/top/v1/runtimeconditions.extension.yaml"
+
+
+def _definitions():
+    from runtimeconditions_profiler.extension.definition import parse_extension_definition
+
+    base = parse_extension_definition({"metadata": {"id": BASE, "version": "v1"}, "spec": {}}, BASE, BASE)
+    top = parse_extension_definition({"metadata": {"id": TOP, "version": "v1"}, "spec": {"dependencies": [BASE]}}, TOP, TOP)
+    return {(BASE, "v1"): base, (TOP, "v1"): top}
+
+
+def test_resolve_reference_finds_the_version_of_a_bare_id() -> None:
+    from runtimeconditions_profiler.extension.identity import resolve_reference
+
+    known = [(BASE, "v1"), (TOP, "v1")]
+    assert resolve_reference((BASE, ""), known) == (BASE, "v1")
+    assert resolve_reference((BASE, "v1"), known) == (BASE, "v1")
+    assert resolve_reference(("https://example.test/other", ""), known) == ("https://example.test/other", "")
+    # Two versions of one id are ambiguous, so the reference is left alone.
+    assert resolve_reference((BASE, ""), [(BASE, "v1"), (BASE, "v2")]) == (BASE, "")
+
+
+def test_string_dependencies_resolve_to_their_definitions() -> None:
+    from runtimeconditions_profiler.extension.definition import dependency_cycle_errors, resolve_definitions
+    from runtimeconditions_profiler.util import add_extension_closure
+
+    definitions = _definitions()
+    assert [item.id for item in resolve_definitions((TOP, "v1"), definitions)] == [BASE, TOP]
+    assert dependency_cycle_errors(definitions) == []
+    closure: set[tuple[str, str]] = set()
+    add_extension_closure((TOP, "v1"), {key: value.dependencies for key, value in definitions.items()}, closure)
+    assert closure == {(BASE, "v1"), (TOP, "v1")}
