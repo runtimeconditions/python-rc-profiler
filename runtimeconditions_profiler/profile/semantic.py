@@ -88,6 +88,7 @@ class GeneratedProfileValidator:
     def __init__(self, verified: VerifiedBindingSet) -> None:
         self.verified = verified
         self.by_id: dict[tuple[str, str], VerifiedBindingPackage] = {}
+        self.versions: dict[str, str] = {}
         expected_core = {
             "id": CORE_ID, "version": CORE_VERSION,
             "semanticSha256": CORE_SEMANTIC_SHA256,
@@ -101,6 +102,7 @@ class GeneratedProfileValidator:
             if extension_id in self.by_id:
                 _fail(name, f"duplicate installed extension {extension_id}")
             self.by_id[extension_id] = package
+            self.versions[extension_id[0]] = extension_id[1]
 
     def build(
         self, extracted: tuple[ExtractedCondition, ...],
@@ -134,6 +136,12 @@ class GeneratedProfileValidator:
                 )
         return profile
 
+    def _reference(self, value: Any) -> tuple[str, str]:
+        """Read a dependency, which names an extension by its full id string, as (id, version)."""
+        if isinstance(value, str) and value in self.versions:
+            return value, self.versions[value]
+        return parse_identifier(value)
+
     def _closure(self, direct: set[tuple[str, str]]) -> dict[tuple[str, str], VerifiedBindingPackage]:
         found: dict[tuple[str, str], VerifiedBindingPackage] = {}
         visiting: set[tuple[str, str]] = set()
@@ -147,7 +155,7 @@ class GeneratedProfileValidator:
             if package is None:
                 _fail(extension_id, "extension has no verified installed binding package")
             visiting.add(extension_id)
-            for dependency in sorted(parse_identifier(dep) for dep in package.extension["spec"].get("dependencies", [])):
+            for dependency in sorted(self._reference(dep) for dep in package.extension["spec"].get("dependencies", [])):
                 visit(dependency)
             visiting.remove(extension_id)
             found[extension_id] = package

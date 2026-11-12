@@ -5,6 +5,7 @@ from typing import Any, Optional
 from urllib.parse import urlparse
 
 from .errors import RuntimeConditionsError
+from .extension.identity import resolve_reference
 from .models import Diagnostic, RuntimeConditionsArtifact
 
 
@@ -100,7 +101,7 @@ def add_unique(items: list[str], value: str) -> None:
 
 def add_extension_closure(extension: tuple[str, str], dependencies: dict[tuple[str, str], list[tuple[str, str]]], resolved: set[tuple[str, str]]) -> None:
     for dependency in dependencies.get(extension, []):
-        add_extension_closure(dependency, dependencies, resolved)
+        add_extension_closure(resolve_reference(dependency, dependencies), dependencies, resolved)
     resolved.add(extension)
 
 

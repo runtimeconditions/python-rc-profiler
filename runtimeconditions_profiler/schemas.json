@@ -38,8 +38,9 @@
             "const": true
           },
           "emitter": {
+            "description": "Emitter name followed by @sha256: and the exact tool artifact digest. Released generation uses the locked release digest; development fixtures use the actual workspace executable or source snapshot digest. This string preserves the v1alpha2 interface of installed profiler readers.",
             "type": "string",
-            "minLength": 1
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*@sha256:[0-9a-f]{64}$"
           },
           "version": {
             "type": "string",
@@ -68,7 +69,6 @@
         "additionalProperties": false,
         "required": [
           "id",
-          "version",
           "semanticSha256"
         ],
         "properties": {
@@ -85,7 +85,7 @@
         }
       },
       "package": {
-        "description": "For Go, coordinate is the package import path, name is the Go package name, and version is the resolved module version. For Python, coordinate is the distribution name, name is the import package, and version is the installed distribution version. Consumers must compare all applicable fields to native package-manager metadata.",
+        "description": "For Go, coordinate is the package import path, name is the Go package name, and version is the resolved module version. For Python, coordinate is the distribution name, name is the import package, and version is the installed distribution version. For TypeScript, coordinate and name are the npm package name and version is the installed package version. For Java, coordinate is the Maven groupId:artifactId, name is the Java package, and version is the installed artifact version. Consumers must compare all applicable fields to native package-manager metadata.",
         "type": "object",
         "additionalProperties": false,
         "required": [
@@ -98,7 +98,9 @@
           "language": {
             "enum": [
               "go",
-              "python"
+              "python",
+              "typescript",
+              "java"
             ]
           },
           "coordinate": {
@@ -107,7 +109,7 @@
           },
           "name": {
             "type": "string",
-            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+            "minLength": 1
           },
           "version": {
             "type": "string",
@@ -120,6 +122,14 @@
           "minimumPythonVersion": {
             "type": "string",
             "pattern": "^[0-9]+\\.[0-9]+$"
+          },
+          "minimumNodeVersion": {
+            "type": "string",
+            "pattern": "^[0-9]+\\.[0-9]+$"
+          },
+          "minimumJavaVersion": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
           }
         },
         "allOf": [
@@ -135,19 +145,142 @@
               "required": [
                 "minimumGoVersion"
               ],
+              "properties": {
+                "name": {
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                }
+              },
               "not": {
-                "required": [
-                  "minimumPythonVersion"
+                "anyOf": [
+                  {
+                    "required": [
+                      "minimumPythonVersion"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "minimumNodeVersion"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "minimumJavaVersion"
+                    ]
+                  }
                 ]
               }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "language": {
+                  "const": "python"
+                }
+              }
             },
-            "else": {
+            "then": {
               "required": [
                 "minimumPythonVersion"
               ],
+              "properties": {
+                "name": {
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                }
+              },
               "not": {
-                "required": [
-                  "minimumGoVersion"
+                "anyOf": [
+                  {
+                    "required": [
+                      "minimumGoVersion"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "minimumNodeVersion"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "minimumJavaVersion"
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "language": {
+                  "const": "typescript"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "minimumNodeVersion"
+              ],
+              "properties": {
+                "name": {
+                  "pattern": "^(?:@[a-z0-9][a-z0-9-]*/)?[a-z0-9][a-z0-9-]*$"
+                }
+              },
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "minimumGoVersion"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "minimumPythonVersion"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "minimumJavaVersion"
+                    ]
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "language": {
+                  "const": "java"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "minimumJavaVersion"
+              ],
+              "properties": {
+                "name": {
+                  "pattern": "^[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)*$"
+                }
+              },
+              "not": {
+                "anyOf": [
+                  {
+                    "required": [
+                      "minimumGoVersion"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "minimumPythonVersion"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "minimumNodeVersion"
+                    ]
+                  }
                 ]
               }
             }
@@ -213,8 +346,21 @@
               }
             }
           }
+        }
+      },
+      {
+        "if": {
+          "properties": {
+            "package": {
+              "properties": {
+                "language": {
+                  "const": "python"
+                }
+              }
+            }
+          }
         },
-        "else": {
+        "then": {
           "properties": {
             "declarations": {
               "items": {
@@ -243,13 +389,100 @@
             }
           }
         }
+      },
+      {
+        "if": {
+          "properties": {
+            "package": {
+              "properties": {
+                "language": {
+                  "const": "typescript"
+                }
+              }
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "declarations": {
+              "items": {
+                "properties": {
+                  "file": {
+                    "const": "bindings.ts"
+                  }
+                }
+              }
+            },
+            "importedMarkerContracts": {
+              "items": {
+                "required": [
+                  "providerPackage"
+                ]
+              }
+            },
+            "types": {
+              "items": {
+                "properties": {
+                  "file": {
+                    "const": "bindings.ts"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "if": {
+          "properties": {
+            "package": {
+              "properties": {
+                "language": {
+                  "const": "java"
+                }
+              }
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "declarations": {
+              "items": {
+                "required": [
+                  "functionClass"
+                ],
+                "properties": {
+                  "file": {
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.java$"
+                  }
+                }
+              }
+            },
+            "importedMarkerContracts": {
+              "items": {
+                "required": [
+                  "providerPackage"
+                ]
+              }
+            },
+            "types": {
+              "items": {
+                "properties": {
+                  "file": {
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.java$"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     ],
     "$defs": {
       "extensionIdentifier": {
-        "description": "IDs SHOULD use a resolver-supported format; URI syntax is not required.",
         "type": "string",
-        "minLength": 1
+        "format": "uri",
+        "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:"
       },
       "sha256": {
         "type": "string",
@@ -311,7 +544,7 @@
         }
       },
       "reference": {
-        "description": "Exactly one local native type or language builtin. Pointer records Go pointer syntax; nullable records a Python annotation accepting None. A consumer must resolve every type to exactly one entry in types.",
+        "description": "Exactly one local native type or language builtin. Pointer records Go pointer syntax; nullable records a Python annotation accepting None. TypeScript records optional properties through the field's required flag. Java builtins are the boxed java.lang names; a nullable value is Void or Object. A consumer must resolve every type to exactly one entry in types.",
         "type": "object",
         "additionalProperties": false,
         "properties": {
@@ -330,7 +563,16 @@
               "int",
               "float",
               "None",
-              "JSONValue"
+              "JSONValue",
+              "boolean",
+              "number",
+              "null",
+              "String",
+              "Boolean",
+              "Long",
+              "Double",
+              "Void",
+              "Object"
             ]
           },
           "pointer": {
@@ -392,11 +634,12 @@
           "markerMethod": {
             "$ref": "#/$defs/nativeIdentifier"
           },
+          "functionClass": {
+            "$ref": "#/$defs/nativeIdentifier"
+          },
           "file": {
-            "enum": [
-              "bindings.go",
-              "bindings.py"
-            ]
+            "type": "string",
+            "minLength": 1
           }
         }
       },
@@ -664,10 +907,8 @@
             ]
           },
           "file": {
-            "enum": [
-              "bindings.go",
-              "bindings.py"
-            ]
+            "type": "string",
+            "minLength": 1
           },
           "implements": {
             "type": "array",
@@ -882,26 +1123,9 @@
     },
     "$defs": {
       "extensionIdentifier": {
-        "description": "IDs SHOULD use a resolver-supported format; URI syntax is not required.",
         "type": "string",
-        "minLength": 1
-      },
-      "extensionReference": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "id",
-          "version"
-        ],
-        "properties": {
-          "id": {
-            "$ref": "#/$defs/extensionIdentifier"
-          },
-          "version": {
-            "type": "string",
-            "minLength": 1
-          }
-        }
+        "format": "uri",
+        "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:"
       },
       "sha256": {
         "type": "string",
@@ -949,7 +1173,6 @@
         "type": "object",
         "required": [
           "id",
-          "version",
           "semanticSha256"
         ],
         "additionalProperties": false,
@@ -992,7 +1215,6 @@
         "type": "object",
         "required": [
           "id",
-          "version",
           "semanticSha256"
         ],
         "additionalProperties": false,
@@ -1011,7 +1233,8 @@
             "type": "array",
             "x-runtimeconditions-ordering": "set",
             "items": {
-              "$ref": "#/$defs/extensionReference"
+              "type": "string",
+              "minLength": 1
             }
           }
         }
@@ -1025,10 +1248,12 @@
         "additionalProperties": false,
         "properties": {
           "from": {
-            "$ref": "#/$defs/extensionReference"
+            "type": "string",
+            "minLength": 1
           },
           "to": {
-            "$ref": "#/$defs/extensionReference"
+            "type": "string",
+            "minLength": 1
           }
         }
       },
@@ -1714,26 +1939,9 @@
     ],
     "$defs": {
       "extensionIdentifier": {
-        "description": "IDs SHOULD use a resolver-supported format; URI syntax is not required.",
         "type": "string",
-        "minLength": 1
-      },
-      "extensionReference": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "id",
-          "version"
-        ],
-        "properties": {
-          "id": {
-            "$ref": "#/$defs/extensionIdentifier"
-          },
-          "version": {
-            "type": "string",
-            "minLength": 1
-          }
-        }
+        "format": "uri",
+        "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:"
       },
       "sha256": {
         "type": "string",
@@ -1760,6 +1968,47 @@
           },
           "sha256": {
             "$ref": "#/$defs/sha256"
+          }
+        }
+      },
+      "profilerIdentity": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/toolIdentity"
+          },
+          {
+            "$ref": "#/$defs/linkedGoProfilerIdentity"
+          }
+        ]
+      },
+      "linkedGoProfilerIdentity": {
+        "description": "Exact linked Go profiler dependency, distinct from an executable digest.",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "name",
+          "version",
+          "module",
+          "moduleSum"
+        ],
+        "properties": {
+          "kind": {
+            "const": "go-module"
+          },
+          "name": {
+            "const": "go-rc-profiler"
+          },
+          "version": {
+            "type": "string",
+            "pattern": "^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(\\+incompatible)?$"
+          },
+          "module": {
+            "const": "github.com/runtimeconditions/go-rc-profiler"
+          },
+          "moduleSum": {
+            "type": "string",
+            "pattern": "^h1:[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=$"
           }
         }
       },
@@ -1888,7 +2137,6 @@
         "additionalProperties": false,
         "required": [
           "id",
-          "version",
           "semanticSha256"
         ],
         "properties": {
@@ -1926,7 +2174,6 @@
         "additionalProperties": false,
         "required": [
           "id",
-          "version",
           "sourceSha256",
           "semanticSha256",
           "sourceBackend",
@@ -1962,7 +2209,7 @@
             "x-runtimeconditions-ordering": "set",
             "uniqueItems": true,
             "items": {
-              "$ref": "#/$defs/extensionReference"
+              "$ref": "#/$defs/nonEmptyString"
             }
           }
         }
@@ -1980,7 +2227,7 @@
         ],
         "properties": {
           "extension": {
-            "$ref": "#/$defs/extensionReference"
+            "$ref": "#/$defs/nonEmptyString"
           },
           "coordinate": {
             "$ref": "#/$defs/nonEmptyString"
@@ -2048,7 +2295,7 @@
             "$ref": "#/$defs/toolIdentity"
           },
           "profiler": {
-            "$ref": "#/$defs/toolIdentity"
+            "$ref": "#/$defs/profilerIdentity"
           }
         }
       },
@@ -2071,7 +2318,7 @@
             "$ref": "#/$defs/toolIdentity"
           },
           "profiler": {
-            "$ref": "#/$defs/toolIdentity"
+            "$ref": "#/$defs/profilerIdentity"
           },
           "sourceDirectory": {
             "type": "string",
@@ -2119,15 +2366,15 @@
       "metadata": {
         "type": "object",
         "required": [
-          "id",
-          "version"
+          "id"
         ],
         "additionalProperties": false,
         "properties": {
           "id": {
-            "description": "IDs SHOULD use a resolver-supported format; URI syntax is not required.",
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "format": "uri",
+            "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:"
           },
           "version": {
             "type": "string",
@@ -2136,22 +2383,6 @@
           "semanticSha256": {
             "type": "string",
             "pattern": "^[0-9a-f]{64}$"
-          }
-        }
-      },
-      "extensionReference": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-          "id",
-          "version"
-        ],
-        "properties": {
-          "id": {
-            "$ref": "#/$defs/nonEmptyString"
-          },
-          "version": {
-            "$ref": "#/$defs/nonEmptyString"
           }
         }
       },
@@ -2165,7 +2396,10 @@
             "x-runtimeconditions-ordering": "set",
             "uniqueItems": true,
             "items": {
-              "$ref": "#/$defs/extensionReference"
+              "type": "string",
+              "minLength": 1,
+              "format": "uri",
+              "pattern": "^[A-Za-z][A-Za-z0-9+.-]*:"
             }
           },
           "kinds": {

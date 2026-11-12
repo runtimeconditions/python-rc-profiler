@@ -295,7 +295,7 @@ def verified_distribution(
     manifest = {
         "apiVersion": "runtimeconditions.io/bindings/v1alpha2",
         "kind": "RuntimeConditionsBindingManifest",
-        "generated": {"nonEditable": True, "emitter": "test-emitter", "version": "1"},
+        "generated": {"nonEditable": True, "emitter": "test-emitter@sha256:" + "0" * 64, "version": "1"},
         "model": {"apiVersion": model["apiVersion"], "semanticSha256": model_digest},
         "extension": dict(root),
         "package": package_id,
@@ -522,7 +522,7 @@ def test_direct_binding_dependency_is_resolved_from_installed_metadata(
     dependency_root = dependency_model["rootExtension"]
     dependency_extension = read(dependency_record, "runtimeconditions.extension.yaml")
     root_extension = read(root_record, "runtimeconditions.extension.yaml")
-    root_extension["spec"]["dependencies"] = [reference_object(parse_identifier(dependency_root))]
+    root_extension["spec"]["dependencies"] = [dependency_root["id"]]
     root_schema = verify._schemas()[verify.SCHEMAS["runtimeconditions.extension.yaml"]]
     root_digest = verify._canonical_sha256(verify._semantic_value(root_extension, root_schema, root_schema))
     replace_resource(root_record, "runtimeconditions.extension.yaml", root_extension)
@@ -530,9 +530,9 @@ def test_direct_binding_dependency_is_resolved_from_installed_metadata(
     model = read(root_record, "runtimeconditions.binding-model.yaml")
     model["rootExtension"]["semanticSha256"] = root_digest
     model["extensions"][0]["semanticSha256"] = root_digest
-    model["extensions"][0]["dependencies"] = [reference_object(parse_identifier(dependency_root))]
+    model["extensions"][0]["dependencies"] = [dependency_root["id"]]
     model["extensions"].append(dependency_root)
-    model["dependencyEdges"] = [{"from": reference_object(parse_identifier(model["rootExtension"])), "to": reference_object(parse_identifier(dependency_root))}]
+    model["dependencyEdges"] = [{"from": model["rootExtension"]["id"], "to": dependency_root["id"]}]
     model["vocabulary"]["ownedDeclarations"][0]["provenance"]["extensionSha256"] = root_digest
     model["vocabulary"]["importedDeclarations"] = [{
         "coordinate": "kind:dependency", "owner": dependency_root["id"],
@@ -564,7 +564,7 @@ def test_direct_binding_dependency_is_resolved_from_installed_metadata(
     release["dependencyLock"]["extensions"][0]["sourceSha256"] = hashlib.sha256(
         (root_record.root / "example_binding/runtimeconditions.extension.yaml").read_bytes()
     ).hexdigest()
-    release["dependencyLock"]["extensions"][0]["dependencies"] = [reference_object(parse_identifier(dependency_root))]
+    release["dependencyLock"]["extensions"][0]["dependencies"] = [dependency_root["id"]]
     release["dependencyLock"]["extensions"].append({
         "id": dependency_root["id"], "version": dependency_root["version"],
         "semanticSha256": dependency_root["semanticSha256"],
@@ -574,7 +574,7 @@ def test_direct_binding_dependency_is_resolved_from_installed_metadata(
         "sourceBackend": "package", "sourceLocator": "installed:dependency-binding",
     })
     release["packageDependencies"] = [{
-        "extension": reference_object(parse_identifier(dependency_root)), "coordinate": "dependency-binding",
+        "extension": dependency_root["id"], "coordinate": "dependency-binding",
         "name": "dependency_binding", "testedVersion": "1.2.3",
         "compatibleVersionRange": {"minimumInclusive": "1.2.3", "nextBreakingExclusive": "2.0.0"},
         "artifact": {"kind": "python-wheel", "sha256": "0" * 64},
@@ -618,6 +618,7 @@ def semantic_package(
 
 def semantic_set(*packages: verify.VerifiedBindingPackage) -> verify.VerifiedBindingSet:
     by_id = {parse_identifier(item.model["rootExtension"]): item for item in packages}
+    versions = {identifier: version for identifier, version in by_id}
     for package in packages:
         seen: set[str] = set()
         pending = [parse_identifier(package.model["rootExtension"])]
@@ -626,7 +627,10 @@ def semantic_set(*packages: verify.VerifiedBindingPackage) -> verify.VerifiedBin
             if current in seen or current not in by_id:
                 continue
             seen.add(current)
-            pending.extend(parse_identifier(ref) for ref in by_id[current].extension["spec"].get("dependencies", []))
+            pending.extend(
+                (ref, versions[ref]) if isinstance(ref, str) and ref in versions else parse_identifier(ref)
+                for ref in by_id[current].extension["spec"].get("dependencies", [])
+            )
         package.model["extensions"] = [by_id[item].model["rootExtension"] for item in sorted(seen)]
     return verify.VerifiedBindingSet(tuple(packages), tuple(packages))
 
@@ -688,13 +692,13 @@ def test_transitive_marker_reexport_and_scoped_interface_are_static(
         "declarations": [declaration], "importedMarkerContracts": [], "rootBindings": [], "types": [],
     })
     middle = semantic_package(middle_id, "middle_binding", {
-        "dependencies": [{"id": leaf_id, "version": "1.0.0"}], "interfaceTypes": [{"name": "process", "targetKind": "worker"}],
+        "dependencies": [leaf_id], "interfaceTypes": [{"name": "process", "targetKind": "worker"}],
     }, {
         "declarations": [], "importedMarkerContracts": [{**contract, "providerPackage": "leaf_binding"}],
         "rootBindings": [], "types": [],
     })
     root = semantic_package(root_id, "root_binding", {
-        "dependencies": [{"id": middle_id, "version": "1.0.0"}],
+        "dependencies": [middle_id],
         "conditionFields": [{"name": "command", "appliesToKinds": ["worker"],
                              "appliesToInterfaceTypes": ["process"]}],
     }, {

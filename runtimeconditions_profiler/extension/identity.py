@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from ..errors import RuntimeConditionsError
 
 
@@ -58,3 +60,17 @@ def profile_reference(reference: tuple[str, str]) -> str:
 def definition_identifier(metadata: dict[str, object]) -> str:
     """Return the ID declared by valid extension metadata."""
     return parse_identifier(metadata)[0]
+
+
+def resolve_reference(reference: tuple[str, str], known: Iterable[tuple[str, str]]) -> tuple[str, str]:
+    """Pair a dependency written as a bare id with its version.
+
+    Extension dependencies name an extension by its full id string, which carries no
+    version suffix. When the id matches exactly one known (id, version), return that;
+    otherwise return the reference unchanged.
+    """
+    keys = list(known)
+    if reference in keys or reference[1]:
+        return reference
+    matches = [key for key in keys if key[0] == reference[0]]
+    return matches[0] if len(matches) == 1 else reference
