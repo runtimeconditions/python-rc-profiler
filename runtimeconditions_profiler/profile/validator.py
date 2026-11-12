@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..constants import API_VERSION
-from ..extension.identity import parse_identifier
+from ..extension.identity import expand_identifier, parse_identifier
 from ..extension import ExtensionVocabulary
 from ..models import Diagnostic, DiscoveryResult
 from ..util import add_extension_closure, as_map
@@ -32,6 +32,11 @@ class ProfileValidator:
             if artifact.extension_id and artifact.extension_definition
         }
         definitions.update({(artifact.id, artifact.version): artifact.definition for artifact in discovery.sdk_extensions})
+        # A profile may name an extension by its short <url>:<version> reference.
+        extensions = [
+            (expand_identifier(*ref), ref[1]) if ref not in definitions and (expand_identifier(*ref), ref[1]) in definitions else ref
+            for ref in extensions
+        ]
         declared: set[tuple[str, str]] = set()
         for extension in extensions:
             if extension in declared:

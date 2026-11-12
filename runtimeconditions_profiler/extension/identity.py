@@ -27,9 +27,32 @@ def reference_object(reference: tuple[str, str]) -> dict[str, str]:
     return {"id": reference[0], "version": reference[1]}
 
 
+EXTENSION_FILENAME = "runtimeconditions.extension.yaml"
+
+
+def short_identifier(identifier: str, version: str) -> str:
+    """Drop the /<version>/runtimeconditions.extension.yaml tail of an https extension id.
+
+    Ids that are not https URLs, or that do not end that way, stay unchanged.
+    """
+    tail = f"/{version}/{EXTENSION_FILENAME}"
+    if version and identifier.startswith("https://") and identifier.endswith(tail):
+        return identifier[: -len(tail)]
+    return identifier
+
+
+def expand_identifier(identifier: str, version: str) -> str:
+    """Rebuild the full extension id from a short https reference; anything else is returned as is."""
+    if version and identifier.startswith("https://") and not identifier.endswith("/" + EXTENSION_FILENAME):
+        return f"{identifier}/{version}/{EXTENSION_FILENAME}"
+    return identifier
+
+
 def profile_reference(reference: tuple[str, str]) -> str:
-    """Serialize an extension reference for a Runtime Conditions Profile."""
-    return f"{reference[0]}:{reference[1]}" if reference[1] else reference[0]
+    """Serialize an extension reference for a Runtime Conditions Profile as <short-url>:<version>."""
+    identifier, version = reference
+    short = short_identifier(identifier, version)
+    return f"{short}:{version}" if version else short
 
 
 def definition_identifier(metadata: dict[str, object]) -> str:
