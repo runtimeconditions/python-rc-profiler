@@ -1,0 +1,2 @@
+# Preserve the canonical line endings of the digest-pinned core schema.
+runtimeconditions_profiler/runtimeconditions.profile.v0.4.0.schema.yaml text eol=lf
